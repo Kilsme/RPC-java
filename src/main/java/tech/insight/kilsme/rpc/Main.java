@@ -1,16 +1,13 @@
 package tech.insight.kilsme.rpc;
 
+import tech.insight.kilsme.rpc.consumser.Consumer;
+
 import java.util.concurrent.ExecutionException;
 
 public class Main {
-    //rpc远程调用 两个不同服务器进行远程函数调用
-//    public int add(int a,int b){
-//        //consumer ->provider
-//        return a+b;
-//    }
+    // Demo 入口：等价于 ConsumerApp，演示消费端如何发起一次 RPC 调用。
     public static void main(String[] args) throws ExecutionException, InterruptedException {
         Consumer consumer = new Consumer();
-
         System.out.println(consumer.add(1,2));
     }
 }
