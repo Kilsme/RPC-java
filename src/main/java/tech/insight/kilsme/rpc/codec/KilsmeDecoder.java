@@ -1,5 +1,6 @@
 package tech.insight.kilsme.rpc.codec;
 import com.alibaba.fastjson2.JSONObject;
+import com.alibaba.fastjson2.JSONReader;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
@@ -11,6 +12,9 @@ import java.util.Arrays;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
+/**
+ * 协议解码器：把字节流反序列化为 Request/Response。
+ */
 public class KilsmeDecoder extends LengthFieldBasedFrameDecoder {
     public KilsmeDecoder(){
         // 基于长度字段解码：
@@ -53,11 +57,14 @@ public class KilsmeDecoder extends LengthFieldBasedFrameDecoder {
         }
     }
 
+    // 将请求 JSON 转换为 Request，并开启 Class 名称反序列化支持。
     private Request deserializeRequest(byte[]body){
         // 请求体采用 UTF-8 JSON 编码。
         String json = new String(body, StandardCharsets.UTF_8);
-        return JSONObject.parseObject(json, Request.class);
+        return JSONObject.parseObject(json, Request.class, JSONReader.Feature.SupportClassForName);
     }
+
+    // 将响应 JSON 转换为 Response。
     private Response deserializeResponse(byte[]body){
         // 响应体采用 UTF-8 JSON 编码。
         String json = new String(body, StandardCharsets.UTF_8);

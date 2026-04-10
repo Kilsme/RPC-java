@@ -9,6 +9,9 @@ import tech.insight.kilsme.rpc.message.Request;
 
 import java.nio.charset.StandardCharsets;
 
+/**
+ * 请求编码器：把 Request 对象编码为 RPC 协议字节流。
+ */
 public class RequestEncoder extends MessageToByteEncoder<Request> {
     @Override
     protected void encode(ChannelHandlerContext channelHandlerContext, Request request, ByteBuf byteBuf) throws Exception {

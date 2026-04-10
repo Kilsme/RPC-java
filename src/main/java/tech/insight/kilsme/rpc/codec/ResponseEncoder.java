@@ -9,6 +9,9 @@ import tech.insight.kilsme.rpc.message.Response;
 
 import java.nio.charset.StandardCharsets;
 
+/**
+ * 响应编码器：把 Response 对象编码为 RPC 协议字节流。
+ */
 public class ResponseEncoder extends MessageToByteEncoder<Response> {
     @Override
     protected void encode(ChannelHandlerContext channelHandlerContext, Response response, ByteBuf byteBuf) throws Exception {
@@ -23,7 +26,6 @@ public class ResponseEncoder extends MessageToByteEncoder<Response> {
         byteBuf.writeBytes(logic);
         byteBuf.writeByte(messageType);
         byteBuf.writeBytes(body);
-
     }
 
     // Response -> UTF-8 JSON 字节数组。
