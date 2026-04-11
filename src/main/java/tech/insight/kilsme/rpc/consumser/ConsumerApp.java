@@ -10,8 +10,17 @@ import java.util.concurrent.ExecutionException;
 public class ConsumerApp {
     public static void main(String[] args) throws ExecutionException, InterruptedException {
         // 先确保 Provider 已启动，再执行一次 add 的远程调用示例。
-        Add consumer = new Consumer();
-        System.out.println(consumer.add(1,2));
-        System.out.println(consumer.add(1,2));
+        ConsumerProxyFactory proxyFactory = new ConsumerProxyFactory();
+        for(int i=0;i<10;i++){
+            Add addConsumerProxy = proxyFactory.createConsumerProxy(Add.class);
+            System.out.println(addConsumerProxy.add(1,4));
+            System.out.println(addConsumerProxy.add(1,4));
+            System.out.println(addConsumerProxy.add(1,4));
+            System.out.println(addConsumerProxy.add(1,4));
+            System.out.println(addConsumerProxy.add(1,4));
+            System.out.println(addConsumerProxy.add(1,4));
+            System.out.println(addConsumerProxy.add(1,4));
+        }
+
     }
 }

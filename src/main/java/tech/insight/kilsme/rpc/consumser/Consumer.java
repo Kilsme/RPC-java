@@ -4,24 +4,24 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import lombok.extern.slf4j.Slf4j;
 import tech.insight.kilsme.rpc.api.Add;
 import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
 import tech.insight.kilsme.rpc.codec.RequestEncoder;
 import tech.insight.kilsme.rpc.exception.RpcException;
 import tech.insight.kilsme.rpc.message.Request;
 import tech.insight.kilsme.rpc.message.Response;
-import tech.insight.kilsme.rpc.codec.ResponseEncoder;
 
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 // RPC 消费端：负责发起请求并等待 Provider 返回结果。
+@Slf4j
 public class Consumer implements Add {
     //在途请求，没有拿到response的request
-    private Map<Integer, CompletableFuture<?>> inFlightRequestTable = new ConcurrentHashMap<>();
+    private Map<Integer, CompletableFuture<Response>> inFlightRequestTable = new ConcurrentHashMap<>();
      //拿到连接管理器
     private ConnectionManager manager=new ConnectionManager(crateBootstrap());
     private  Bootstrap crateBootstrap(){
@@ -42,13 +42,13 @@ public class Consumer implements Add {
                                     @Override
                                     protected void channelRead0(ChannelHandlerContext channelHandlerContext, Response response) throws Exception {
                                         //返回了相应的response请求
-                                        CompletableFuture requestFuture = inFlightRequestTable.remove(response.getRequestId());
-                                        if (response.getCode() == 200) {
-                                            requestFuture.complete(Integer.valueOf(response.getRes().toString()));
-                                        } else {
-                                            requestFuture.completeExceptionally(new RpcException(response.getErrorMessage()));
-
+                                        CompletableFuture<Response> responseFuture = inFlightRequestTable.remove(response.getRequestId());
+                                        if(responseFuture ==null){
+                                            log.warn("未找到对应的请求，requestId={}", response.getRequestId());
+                                            return;
                                         }
+                                        responseFuture.complete(response);
+
                                     }
                                 });
                     }
@@ -56,10 +56,10 @@ public class Consumer implements Add {
         return bootstrap;
     }
     @Override
-    public int add(int a, int b) {
+    public Integer add(int a, int b) {
         try {
             // 用 Future 承接异步响应，最后在方法尾部 get() 同步返回。
-            CompletableFuture<Integer> completableFuture = new CompletableFuture<>();
+            CompletableFuture<Response> responseCompletableFuture= new CompletableFuture<>();
             Channel channel = manager.getChannel("localhost", 8888);
             if(channel==null){
                 throw  new RpcException("连接失败");
@@ -72,16 +72,32 @@ public class Consumer implements Add {
             request.setParamsClass(new Class[]{int.class, int.class});
             request.setServiceName(Add.class.getName());
             channel.writeAndFlush(request).addListener(f -> {
-                if (f.isSuccess()) {
-                    inFlightRequestTable.put(request.getRequestId(), completableFuture);
+                if (f.isSuccess()){
+                    inFlightRequestTable.put(request.getRequestId(), responseCompletableFuture);
                 }
             });
             // 同步等待异步结果返回。 这个是阻塞等待
-            return completableFuture.get(3, TimeUnit.SECONDS);
-        } catch (Exception e) {
+            Response response = responseCompletableFuture.get(3, TimeUnit.SECONDS);
+            if (response.getCode() == 200) {
+            return (Integer) response.getRes();
+            } else {
+                throw new RpcException(response.getErrorMessage());
+            }
+
+        } catch (RpcException rpcException) {
+            throw  rpcException;
+        }
+        catch (Exception e) {
             throw new RuntimeException("RPC 调用异常");
         }
 
+    }
+
+    @Override
+    public Integer minus(int a, int b) {
+
+
+     return 0;
     }
 }
 

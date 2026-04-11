@@ -7,5 +7,6 @@ public interface Add {
     /**
      * 计算两个整数之和。
      */
-    int add(int a,int b);
+    Integer add(int a,int b);
+    Integer minus(int a ,int b);
 }
