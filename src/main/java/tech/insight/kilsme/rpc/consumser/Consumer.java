@@ -9,12 +9,14 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import tech.insight.kilsme.rpc.api.Add;
 import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
 import tech.insight.kilsme.rpc.codec.RequestEncoder;
+import tech.insight.kilsme.rpc.exception.RpcException;
 import tech.insight.kilsme.rpc.message.Request;
 import tech.insight.kilsme.rpc.message.Response;
 import tech.insight.kilsme.rpc.codec.ResponseEncoder;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 // RPC 消费端：负责发起请求并等待 Provider 返回结果。
 public class Consumer implements Add {
@@ -39,11 +41,13 @@ public class Consumer implements Add {
                                     .addLast(new SimpleChannelInboundHandler<Response>() {
                                         @Override
                                         protected void channelRead0(ChannelHandlerContext channelHandlerContext, Response response) throws Exception {
-                                            System.out.println(response);
-                                            // 响应中的 res 是通用 Object，这里按 int 结果解析。
-                                            Integer res = Integer.valueOf(response.getRes().toString());
-                                            completableFuture.complete(Integer.valueOf(response.getRes().toString()));
-                                            channelHandlerContext.close();
+                                      if(response.getCode()==200){
+                                          completableFuture.complete(Integer.valueOf(response.getRes().toString()));
+                                      }else{
+                                          completableFuture.completeExceptionally(new RpcException(response.getErrorMessage()));
+
+                                      }
+                                      channelHandlerContext.close();
                                         }
                                     });
                         }
@@ -60,8 +64,8 @@ public class Consumer implements Add {
             request.setServiceName(Add.class.getName());
             channelFuture.channel().writeAndFlush(request);
 
-            // 同步等待异步结果返回。
-            return completableFuture.get();
+            // 同步等待异步结果返回。 这个是阻塞等待
+            return completableFuture.get(3,TimeUnit.SECONDS);
 
         }catch (Exception e){
             throw new RuntimeException("RPC 调用异常");

@@ -8,6 +8,7 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import lombok.extern.slf4j.Slf4j;
 import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
 import tech.insight.kilsme.rpc.message.Request;
 import tech.insight.kilsme.rpc.codec.ResponseEncoder;
@@ -18,6 +19,7 @@ import static java.awt.AWTEventMulticaster.add;
 /**
  * RPC Provider 服务器：接收 Request，调用本地服务并返回 Response。
  */
+@Slf4j
 public class ProviderServer {
     // boss 负责接收连接，worker 负责处理已建立连接上的 IO 事件。
     private EventLoopGroup bossEventLoopGroup;
@@ -27,7 +29,7 @@ public class ProviderServer {
 
     public ProviderServer(int port) {
         this.port = port;
-        this.registry=new ProviderRegistry();
+        this.registry = new ProviderRegistry();
     }
 
     // 对外暴露注册入口，实际委托给注册中心。
@@ -53,22 +55,7 @@ public class ProviderServer {
                             nioSocketChannel.pipeline()
                                     .addLast(new KilsmeDecoder())
                                     .addLast(new ResponseEncoder())
-                                    .addLast(new SimpleChannelInboundHandler<Request>() {
-                                        // 收到一个 RPC 请求后，执行业务并返回响应。
-                                        @Override
-                                        protected void channelRead0(ChannelHandlerContext channelHandlerContext, Request request) throws Exception {
-                                            // 1) 根据 serviceName 找到服务实例。
-                                            ProviderRegistry.invocation<?> service = registry.findService(request.getServiceName());
-                                            // 2) 根据 methodName + paramTypes 反射调用。
-                                            Object result = service.invoke(request.getMethodName(), request.getParamsClass(), request.getParams());
-                                            System.out.println(request);
-                                            String methodName = request.getMethodName();
-                                            // 3) 将返回值封装为 Response 并写回客户端。
-                                            Response response = new Response();
-                                            response.setRes(result);
-                                            channelHandlerContext.writeAndFlush(response);
-                                        }
-                                    });
+                                    .addLast(new ProviderHandler());
                         }
                     });
             // 绑定端口并同步等待绑定成功。
@@ -77,6 +64,49 @@ public class ProviderServer {
             throw new RuntimeException("服务器启动异常");
         }
     }
+
+    public class ProviderHandler extends SimpleChannelInboundHandler<Request> {
+        // 收到一个 RPC 请求后，执行业务并返回响应。
+        @Override
+        protected void channelRead0(ChannelHandlerContext channelHandlerContext, Request request) throws Exception {
+            // 1) 根据 serviceName 找到服务实例。
+            ProviderRegistry.invocation<?> invocation = registry.findService(request.getServiceName());
+            // 2) 根据 methodName + paramTypes 反射调用。
+            if (invocation == null) {
+                Response failResp = Response.fail(String.format("%s 没有对应的服务", request.getServiceName()));
+                channelHandlerContext.writeAndFlush(failResp);
+                return;
+            }
+            try {
+                Object result = invocation.invoke(request.getMethodName(), request.getParamsClass(), request.getParams());
+                log.info("{}函数被远程调用了{}，结果是{}",request.getServiceName(),request.getMethodName(),result);
+                channelHandlerContext.writeAndFlush(Response.success(result));
+            } catch (Exception e) {
+                Response failResp = Response.fail(String.format("%s.%s 调用失败: %s", request.getServiceName(), request.getMethodName(), e.getMessage()));
+                channelHandlerContext.writeAndFlush(failResp);
+                return;
+            }
+            System.out.println(request);
+        }
+
+        @Override
+        public void channelActive(ChannelHandlerContext ctx) throws Exception {
+            log.info("地址：{}连接了",ctx.channel().remoteAddress());
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+            //链路发生异常
+            log.error("发生了异常",cause);
+            ctx.channel().close();
+        }
+
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+            log.info("地址：{}断开了",ctx.channel().remoteAddress());
+        }
+    }
+
 
     public void stop() {
         // 优雅关闭线程池，释放网络资源。
