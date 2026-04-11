@@ -73,16 +73,16 @@ public class ProviderServer {
             ProviderRegistry.invocation<?> invocation = registry.findService(request.getServiceName());
             // 2) 根据 methodName + paramTypes 反射调用。
             if (invocation == null) {
-                Response failResp = Response.fail(String.format("%s 没有对应的服务", request.getServiceName()));
+                Response failResp = Response.fail(String.format("%s 没有对应的服务", request.getServiceName()),request.getRequestId());
                 channelHandlerContext.writeAndFlush(failResp);
                 return;
             }
             try {
                 Object result = invocation.invoke(request.getMethodName(), request.getParamsClass(), request.getParams());
-                log.info("{}函数被远程调用了{}，结果是{}",request.getServiceName(),request.getMethodName(),result);
-                channelHandlerContext.writeAndFlush(Response.success(result));
+                log.info("{}函数被远程调用了{}，结果是{},requestId{}",request.getServiceName(),request.getMethodName(),result,request.getRequestId());
+                channelHandlerContext.writeAndFlush(Response.success(result,request.getRequestId()));
             } catch (Exception e) {
-                Response failResp = Response.fail(String.format("%s.%s 调用失败: %s", request.getServiceName(), request.getMethodName(), e.getMessage()));
+                Response failResp = Response.fail(String.format("%s.%s 调用失败: %s", request.getServiceName(), request.getMethodName(), e.getMessage()),request.getRequestId());
                 channelHandlerContext.writeAndFlush(failResp);
                 return;
             }

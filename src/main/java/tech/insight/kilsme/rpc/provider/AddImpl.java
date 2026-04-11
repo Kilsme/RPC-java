@@ -12,7 +12,7 @@ public class AddImpl implements Add {
     @Override
     public int add(int a, int b) {
         // 正常暴露给 RPC 的方法。
-        LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(4)); // 模拟长时间运行的服务方法，便于测试超时和异常场景。
+     //   LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(4)); // 模拟长时间运行的服务方法，便于测试超时和异常场景。
         return a+b;
     }
 

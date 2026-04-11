@@ -12,5 +12,6 @@ public class ConsumerApp {
         // 先确保 Provider 已启动，再执行一次 add 的远程调用示例。
         Add consumer = new Consumer();
         System.out.println(consumer.add(1,2));
+        System.out.println(consumer.add(1,2));
     }
 }
