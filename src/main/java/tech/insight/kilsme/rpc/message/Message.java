@@ -19,11 +19,17 @@ public class Message {
     private byte[]body;
     // 消息类型码：请求与响应在同一条 TCP 连接中通过 type 区分。
     public enum MessageType{
-        REQUEST(1), RESPONSE(2);
+        // Consumer 发往 Provider 的调用请求。
+        REQUEST(1),
+        // Provider 返回给 Consumer 的调用结果。
+        RESPONSE(2);
+
         private final byte code;
         MessageType(int code){
             this.code=(byte) code;
         }
+
+        // 返回协议里实际写入的类型码。
         public byte getCode(){
             return code;
         }

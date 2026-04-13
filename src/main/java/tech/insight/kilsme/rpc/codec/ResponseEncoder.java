@@ -27,7 +27,6 @@ public class ResponseEncoder extends MessageToByteEncoder<Response> {
         byteBuf.writeByte(messageType);
         byteBuf.writeBytes(body);
     }
-
     // Response -> UTF-8 JSON 字节数组。
     private byte[]serializeResponse(Response response){
         return JSONObject.toJSONString(response).getBytes(StandardCharsets.UTF_8);

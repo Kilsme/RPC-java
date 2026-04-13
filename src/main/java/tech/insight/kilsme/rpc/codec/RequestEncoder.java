@@ -26,7 +26,6 @@ public class RequestEncoder extends MessageToByteEncoder<Request> {
         byteBuf.writeBytes(logic);
         byteBuf.writeByte(messageType);
         byteBuf.writeBytes(body);
-
     }
 
     // Request -> UTF-8 JSON 字节数组。

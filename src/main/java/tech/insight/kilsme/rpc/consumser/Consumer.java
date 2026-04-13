@@ -20,10 +20,11 @@ import java.util.concurrent.TimeUnit;
 // RPC 消费端：负责发起请求并等待 Provider 返回结果。
 @Slf4j
 public class Consumer implements Add {
-    //在途请求，没有拿到response的request
+    // 在途请求表：requestId -> 等待结果的 Future。
     private Map<Integer, CompletableFuture<Response>> inFlightRequestTable = new ConcurrentHashMap<>();
-     //拿到连接管理器
+     // 连接复用管理器，统一维护到 Provider 的 TCP 连接。
     private ConnectionManager manager=new ConnectionManager(crateBootstrap());
+    // 创建 Consumer 侧 Netty 客户端配置。
     private  Bootstrap crateBootstrap(){
         // Bootstrap 对应“客户端连接配置”。
         Bootstrap bootstrap = new Bootstrap();
@@ -47,6 +48,7 @@ public class Consumer implements Add {
                                             log.warn("未找到对应的请求，requestId={}", response.getRequestId());
                                             return;
                                         }
+                                        // 回填结果，唤醒 add() 中阻塞等待的线程。
                                         responseFuture.complete(response);
 
                                     }
@@ -73,6 +75,7 @@ public class Consumer implements Add {
             request.setServiceName(Add.class.getName());
             channel.writeAndFlush(request).addListener(f -> {
                 if (f.isSuccess()){
+                    // 仅在发送成功后登记 in-flight，避免永远收不到响应的脏记录。
                     inFlightRequestTable.put(request.getRequestId(), responseCompletableFuture);
                 }
             });
@@ -95,8 +98,7 @@ public class Consumer implements Add {
 
     @Override
     public Integer minus(int a, int b) {
-
-
+     // 当前 Consumer 示例只演示 add，minus 暂未实现远程调用。
      return 0;
     }
 }

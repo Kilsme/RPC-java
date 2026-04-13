@@ -45,9 +45,11 @@ public class KilsmeDecoder extends LengthFieldBasedFrameDecoder {
             frame.readBytes(body);
             // 4) 按消息类型反序列化为具体对象。
             if(Objects.equals(Message.MessageType.REQUEST.getCode(),messageType)){
+                // 解码为请求对象，交给 Provider 入站 handler。
                 return deserializeRequest(body);
             }
             if(Objects.equals(Message.MessageType.RESPONSE.getCode(),messageType)){
+                // 解码为响应对象，交给 Consumer 入站 handler。
                 return deserializeResponse(body);
             }
             throw new IllegalAccessException("消息类型不支持" + messageType);
@@ -63,8 +65,7 @@ public class KilsmeDecoder extends LengthFieldBasedFrameDecoder {
         String json = new String(body, StandardCharsets.UTF_8);
         return JSONObject.parseObject(json, Request.class, JSONReader.Feature.SupportClassForName);
     }
-
-    // 将响应 JSON 转换为 Response。
+    // 将响应 JSON 转换为 Response
     private Response deserializeResponse(byte[]body){
         // 响应体采用 UTF-8 JSON 编码。
         String json = new String(body, StandardCharsets.UTF_8);

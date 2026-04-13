@@ -13,6 +13,10 @@ import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
 import tech.insight.kilsme.rpc.message.Request;
 import tech.insight.kilsme.rpc.codec.ResponseEncoder;
 import tech.insight.kilsme.rpc.message.Response;
+import tech.insight.kilsme.rpc.register.DefaultServiceRegister;
+import tech.insight.kilsme.rpc.register.RegisterConfig;
+import tech.insight.kilsme.rpc.register.ServiceMetadata;
+import tech.insight.kilsme.rpc.register.ServiceRegister;
 
 import static java.awt.AWTEventMulticaster.add;
 
@@ -26,9 +30,15 @@ public class ProviderServer {
     private EventLoopGroup workerEventLoopGroup;
     private final ProviderRegistry registry;
     private final int port;
+    private final String host;
+    private final ServiceRegister serviceRegister;
+    private final RegisterConfig registerConfig;
 
-    public ProviderServer(int port) {
+    public ProviderServer(int port, String host, RegisterConfig config) {
+        this.registerConfig=config;
+        this.serviceRegister=new DefaultServiceRegister();
         this.port = port;
+        this.host = host;
         this.registry = new ProviderRegistry();
     }
 
@@ -42,6 +52,7 @@ public class ProviderServer {
         bossEventLoopGroup = new NioEventLoopGroup();
         workerEventLoopGroup = new NioEventLoopGroup(4);
         try {
+            this.serviceRegister.init(registerConfig);
             ServerBootstrap serverBootstrap = new ServerBootstrap();
             serverBootstrap.group(bossEventLoopGroup, workerEventLoopGroup)
                     .channel(NioServerSocketChannel.class)
@@ -60,9 +71,20 @@ public class ProviderServer {
                     });
             // 绑定端口并同步等待绑定成功。
             serverBootstrap.bind(port).sync();
+            //将所有的方法注册到注册中心中
+            registry.allServiceName().stream().map(this::buildMetadata).forEach(this.serviceRegister::registerService);
+
         } catch (Exception e) {
             throw new RuntimeException("服务器启动异常");
         }
+    }
+
+    private ServiceMetadata buildMetadata(String serviceName) {
+        ServiceMetadata metadata = new ServiceMetadata();
+        metadata.setServiceName(serviceName);
+        metadata.setHost(host);
+        metadata.setPort(port);
+        return metadata;
     }
 
     public class ProviderHandler extends SimpleChannelInboundHandler<Request> {
@@ -73,16 +95,16 @@ public class ProviderServer {
             ProviderRegistry.invocation<?> invocation = registry.findService(request.getServiceName());
             // 2) 根据 methodName + paramTypes 反射调用。
             if (invocation == null) {
-                Response failResp = Response.fail(String.format("%s 没有对应的服务", request.getServiceName()),request.getRequestId());
+                Response failResp = Response.fail(String.format("%s 没有对应的服务", request.getServiceName()), request.getRequestId());
                 channelHandlerContext.writeAndFlush(failResp);
                 return;
             }
             try {
                 Object result = invocation.invoke(request.getMethodName(), request.getParamsClass(), request.getParams());
-                log.info("{}函数被远程调用了{}，结果是{},requestId{}",request.getServiceName(),request.getMethodName(),result,request.getRequestId());
-                channelHandlerContext.writeAndFlush(Response.success(result,request.getRequestId()));
+                log.info("{}函数被远程调用了{}，结果是{},requestId{}", request.getServiceName(), request.getMethodName(), result, request.getRequestId());
+                channelHandlerContext.writeAndFlush(Response.success(result, request.getRequestId()));
             } catch (Exception e) {
-                Response failResp = Response.fail(String.format("%s.%s 调用失败: %s", request.getServiceName(), request.getMethodName(), e.getMessage()),request.getRequestId());
+                Response failResp = Response.fail(String.format("%s.%s 调用失败: %s", request.getServiceName(), request.getMethodName(), e.getMessage()), request.getRequestId());
                 channelHandlerContext.writeAndFlush(failResp);
                 return;
             }
@@ -91,19 +113,19 @@ public class ProviderServer {
 
         @Override
         public void channelActive(ChannelHandlerContext ctx) throws Exception {
-            log.info("地址：{}连接了",ctx.channel().remoteAddress());
+            log.info("地址：{}连接了", ctx.channel().remoteAddress());
         }
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
             //链路发生异常
-            log.error("发生了异常",cause);
+            log.error("发生了异常", cause);
             ctx.channel().close();
         }
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-            log.info("地址：{}断开了",ctx.channel().remoteAddress());
+            log.info("地址：{}断开了", ctx.channel().remoteAddress());
         }
     }
 

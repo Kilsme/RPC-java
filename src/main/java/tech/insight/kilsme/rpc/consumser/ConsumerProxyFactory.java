@@ -8,16 +8,20 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import lombok.extern.slf4j.Slf4j;
-import tech.insight.kilsme.rpc.api.Add;
 import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
 import tech.insight.kilsme.rpc.codec.RequestEncoder;
 import tech.insight.kilsme.rpc.exception.RpcException;
 import tech.insight.kilsme.rpc.message.Request;
 import tech.insight.kilsme.rpc.message.Response;
+import tech.insight.kilsme.rpc.register.DefaultServiceRegister;
+import tech.insight.kilsme.rpc.register.RegisterConfig;
+import tech.insight.kilsme.rpc.register.ServiceMetadata;
+import tech.insight.kilsme.rpc.register.ServiceRegister;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,10 +29,16 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class ConsumerProxyFactory {
-    //在途请求，没有拿到response的request
-    private  final Map<Integer, CompletableFuture<Response>> inFlightRequestTable = new ConcurrentHashMap<>();
-    //拿到连接管理器
-    private  final ConnectionManager manager = new ConnectionManager(crateBootstrap());
+    //在途请求表：requestId -> 异步响应 Future。
+    private final Map<Integer, CompletableFuture<Response>> inFlightRequestTable = new ConcurrentHashMap<>();
+    // 连接管理器：复用到同一 Provider 地址的连接。
+    private final ConnectionManager manager = new ConnectionManager(crateBootstrap());
+    private final ServiceRegister register;
+
+    public ConsumerProxyFactory(RegisterConfig config) throws Exception {
+        this.register = new DefaultServiceRegister();
+        this.register.init(config);
+    }
 
     private Bootstrap crateBootstrap() {
         // Bootstrap 对应“客户端连接配置”。
@@ -62,13 +72,15 @@ public class ConsumerProxyFactory {
         return bootstrap;
     }
 
-    public <I> I createConsumerProxy(Class<I> inserfaceClass) {
-      return(I)Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class[]{Add.class}, new InvocationHandler() {
+    public <I> I createConsumerProxy(Class<I> interfaceClass) {
+        //通过 JDK 动态代理把本地接口调用转为远程 RPC 请求。
+        return (I) Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class[]{interfaceClass}, new InvocationHandler() {
             @Override
             public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+                // 先处理 Object 通用方法，避免走远程调用。
                 if (method.getDeclaringClass() == Object.class) {
                     if (method.getName().equals("toString")) {
-                        return "YY Proxy Consumer"+inserfaceClass.getName();
+                        return "YY Proxy Consumer" + interfaceClass.getName();
                     }
                     if (method.getName().equals("hashCode")) {
                         return System.identityHashCode(proxy);
@@ -78,10 +90,21 @@ public class ConsumerProxyFactory {
                     }
                     throw new UnsupportedOperationException("代理对象不支持这个函数");
                 }
+                //consumer-->center  provider
+                //注册中心 保存数据
+                //通知机制
+                //数据一致性
+                //心跳维护，临时数据
+                //nacos  zookeeper
                 try {
                     // 用 Future 承接异步响应，最后在方法尾部 get() 同步返回。
                     CompletableFuture<Response> responseCompletableFuture = new CompletableFuture<>();
-                    Channel channel = manager.getChannel("localhost", 8888);
+                  List<ServiceMetadata> serviceMetadata=register.fetchServiceList(interfaceClass.getName());
+                    if(serviceMetadata.isEmpty()){
+                        throw new RpcException(interfaceClass.getName()+"没有找到服务");
+                    }
+                    ServiceMetadata providerMetadata= serviceMetadata.get(0);
+                    Channel channel = manager.getChannel(providerMetadata.getHost(), providerMetadata.getPort());
                     if (channel == null) {
                         throw new RpcException("连接失败");
                     }
@@ -91,10 +114,13 @@ public class ConsumerProxyFactory {
                     // request.setMethodName("privateAdd"); // 仅用于测试不存在方法的异常路径。
                     request.setParams(args);
                     request.setParamsClass(method.getParameterTypes());
-                    request.setServiceName(inserfaceClass.getName());
+                    request.setServiceName(interfaceClass.getName());
+                    inFlightRequestTable.put(request.getRequestId(), responseCompletableFuture);//防止通信速度过快，导致response回来找不到request在table中
                     channel.writeAndFlush(request).addListener(f -> {
-                        if (f.isSuccess()) {
-                            inFlightRequestTable.put(request.getRequestId(), responseCompletableFuture);
+                        if (!f.isSuccess()) {
+                            // 发送成功后登记请求，等待 Provider 返回同 requestId 的响应。
+                            inFlightRequestTable.remove(request.getRequestId());
+                            responseCompletableFuture.completeExceptionally(new RpcException("请求发送失败"+f.cause()));
                         }
                     });
                     // 同步等待异步结果返回。 这个是阻塞等待
@@ -103,7 +129,6 @@ public class ConsumerProxyFactory {
                         return response.getRes();
                     }
                     throw new RpcException(response.getErrorMessage());
-
                 } catch (RpcException rpcException) {
                     throw rpcException;
                 } catch (Exception e) {

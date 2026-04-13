@@ -1,6 +1,8 @@
 package tech.insight.kilsme.rpc.provider;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -9,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ProviderRegistry {
     // key 是接口全限定名，value 是可执行的服务封装。
-    private Map<String, invocation<?>> serviceInstanceMap=new ConcurrentHashMap<>();
+    private  final Map<String, invocation<?>> serviceInstanceMap=new ConcurrentHashMap<>();
     // 注册服务实现，要求必须按接口维度注册。
     public<I> void register(Class<I>interfaceClass,I serviceInstance){
            if(!interfaceClass.isInterface()){
@@ -20,7 +22,11 @@ public class ProviderRegistry {
         }
     }
     public invocation<?> findService(String serviceName){
+        // serviceName 一般来自 Request.serviceName。
         return serviceInstanceMap.get(serviceName);
+    }
+    public List<String> allServiceName(){
+           return  new ArrayList<>(this.serviceInstanceMap.keySet()) ;
     }
 
     /**
@@ -37,8 +43,9 @@ public class ProviderRegistry {
         // 基于接口方法签名定位目标方法并执行。
         public Object invoke(String methodName,Class<?>[] paramTypes,Object[] params)throws Exception {
             //使用接口interfaceClass的形式去寻找方法名字，只会找到公开暴露的接口方法
-         Method invokeMethod=interfaceClass.getDeclaredMethod(methodName,paramTypes);
-         return invokeMethod.invoke(serviceInstance,params);
+            Method invokeMethod=interfaceClass.getDeclaredMethod(methodName,paramTypes);
+            // 在实现类实例上执行该接口方法。
+            return invokeMethod.invoke(serviceInstance,params);
         }
 
     }

@@ -18,6 +18,7 @@ public class AddImpl implements Add {
 
     @Override
     public Integer minus(int a, int b) {
+        // 示例中的第二个公开方法，同样可被 RPC 反射调用。
         return a-b;
     }
 
