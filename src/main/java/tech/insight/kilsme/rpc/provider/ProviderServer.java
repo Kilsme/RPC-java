@@ -14,9 +14,9 @@ import tech.insight.kilsme.rpc.message.Request;
 import tech.insight.kilsme.rpc.codec.ResponseEncoder;
 import tech.insight.kilsme.rpc.message.Response;
 import tech.insight.kilsme.rpc.register.DefaultServiceRegister;
-import tech.insight.kilsme.rpc.register.RegisterConfig;
+import tech.insight.kilsme.rpc.register.RegistryConfig;
 import tech.insight.kilsme.rpc.register.ServiceMetadata;
-import tech.insight.kilsme.rpc.register.ServiceRegister;
+import tech.insight.kilsme.rpc.register.ServiceRegistry;
 
 import static java.awt.AWTEventMulticaster.add;
 
@@ -29,16 +29,12 @@ public class ProviderServer {
     private EventLoopGroup bossEventLoopGroup;
     private EventLoopGroup workerEventLoopGroup;
     private final ProviderRegistry registry;
-    private final int port;
-    private final String host;
-    private final ServiceRegister serviceRegister;
-    private final RegisterConfig registerConfig;
+    private final ServiceRegistry serviceRegister;
+    private final ProviderProperties providerProperties;
 
-    public ProviderServer(int port, String host, RegisterConfig config) {
-        this.registerConfig=config;
-        this.serviceRegister=new DefaultServiceRegister();
-        this.port = port;
-        this.host = host;
+    public ProviderServer(ProviderProperties providerProperties) {
+        this.providerProperties = providerProperties;
+        this.serviceRegister = new DefaultServiceRegister();
         this.registry = new ProviderRegistry();
     }
 
@@ -47,12 +43,13 @@ public class ProviderServer {
         registry.register(interfaceClass, serviceInstance);
     }
 
+    // 启动 Provider：初始化注册中心、启动 Netty、发布服务元数据。
     public void start() {
         // 服务端常见线程模型：1 组 accept 线程 + 1 组读写/业务线程。
         bossEventLoopGroup = new NioEventLoopGroup();
-        workerEventLoopGroup = new NioEventLoopGroup(4);
+        workerEventLoopGroup = new NioEventLoopGroup(providerProperties.getWorkThreadNum());
         try {
-            this.serviceRegister.init(registerConfig);
+            this.serviceRegister.init(providerProperties.getRegistryConfig());
             ServerBootstrap serverBootstrap = new ServerBootstrap();
             serverBootstrap.group(bossEventLoopGroup, workerEventLoopGroup)
                     .channel(NioServerSocketChannel.class)
@@ -70,20 +67,20 @@ public class ProviderServer {
                         }
                     });
             // 绑定端口并同步等待绑定成功。
-            serverBootstrap.bind(port).sync();
+            serverBootstrap.bind(providerProperties.getHost(), providerProperties.getPort()).sync();
             //将所有的方法注册到注册中心中
             registry.allServiceName().stream().map(this::buildMetadata).forEach(this.serviceRegister::registerService);
-
         } catch (Exception e) {
             throw new RuntimeException("服务器启动异常");
         }
     }
 
+    // 组装单个服务的注册信息（serviceName -> host:port）。
     private ServiceMetadata buildMetadata(String serviceName) {
         ServiceMetadata metadata = new ServiceMetadata();
         metadata.setServiceName(serviceName);
-        metadata.setHost(host);
-        metadata.setPort(port);
+        metadata.setHost(providerProperties.getHost());
+        metadata.setPort(providerProperties.getPort());
         return metadata;
     }
 
@@ -130,6 +127,7 @@ public class ProviderServer {
     }
 
 
+    // 关闭 Provider 线程组。
     public void stop() {
         // 优雅关闭线程池，释放网络资源。
         if (bossEventLoopGroup != null) {

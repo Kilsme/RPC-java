@@ -10,9 +10,9 @@ import java.nio.charset.StandardCharsets;
 @Data
 public class Message {
     // 协议魔数：用于快速识别是否为本 RPC 协议数据。
-    public static  final byte[]LOGIC="杨杨".getBytes(StandardCharsets.UTF_8);
-    // magic 字段，实际承载 LOGIC。
-    private byte[]logic;
+    public static  final byte[] MAGIC ="杨杨".getBytes(StandardCharsets.UTF_8);
+    // magic 字段，实际承载 MAGIC。
+    private byte[]magic;
     // 消息类型码：1=request, 2=response。
     private byte messageType;
     // 消息体，当前使用 JSON 字节数组。

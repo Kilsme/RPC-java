@@ -14,6 +14,7 @@ public class ProviderRegistry {
     private  final Map<String, invocation<?>> serviceInstanceMap=new ConcurrentHashMap<>();
     // 注册服务实现，要求必须按接口维度注册。
     public<I> void register(Class<I>interfaceClass,I serviceInstance){
+           // 仅允许接口维度注册，避免直接暴露具体实现类。
            if(!interfaceClass.isInterface()){
                throw  new IllegalArgumentException("只能注册接口类型");
            }
@@ -21,6 +22,7 @@ public class ProviderRegistry {
             throw new IllegalStateException("服务已注册: "+interfaceClass.getName());
         }
     }
+
     public invocation<?> findService(String serviceName){
         // serviceName 一般来自 Request.serviceName。
         return serviceInstanceMap.get(serviceName);
@@ -35,7 +37,7 @@ public class ProviderRegistry {
     public static class invocation<I> {
         final I serviceInstance;
         final Class<I>interfaceClass;
-     //这个invocation将示例和说明书打包在一起
+     // 这个 invocation 将“实现实例 + 接口方法签名”绑定在一起。
         public invocation(Class<I>interfaceClass, I serviceInstance){
             this.serviceInstance=serviceInstance;
             this.interfaceClass = interfaceClass;

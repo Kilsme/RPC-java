@@ -23,19 +23,29 @@ public class KilsmeDecoder extends LengthFieldBasedFrameDecoder {
         super(1024*1024,0,Integer.BYTES,0,Integer.BYTES);
     }
 
+    /*
+    题外话 ByteBuf使用的是引用计数的过程因为netty为了性能考虑，使用了池化内存分配和引用计数机制来管理内存
+    。每当一个 ByteBuf 被创建时，它的引用计数被设置为 1。当这个 ByteBuf 被传递给下一个 handler 时，
+    Netty 会增加它的引用计数，以确保它在被多个 handler 使用时不会被提前释放。
+    当一个 handler 完成对 ByteBuf 的处理后，它需要调用 release() 方法来减少引用计数。
+    当引用计数降到 0 时，Netty 会自动回收这个 ByteBuf 的内存。这种机制可以有效地避免内存泄漏和过早释放的问题
+    ，同时也提高了性能，因为它减少了垃圾回收的压力。
+    但是jvm中采用的是可达性分析（jvm中对象可以出现循环依赖如果使用引用计数的话计数不会到0）
+     */
     @Override
     protected Object decode(ChannelHandlerContext ctx, ByteBuf in) throws Exception {
         // 先按长度字段切出一帧完整业务报文，避免粘包/半包。
         ByteBuf frame = (ByteBuf) super.decode(ctx, in);
+        //head-->handler1-->handler2 -->tail pipeline  byteBuf中指向的是计算机的直接内存
         if (frame == null) {
             // 数据还不完整，等待下次网络数据到达。
             return null;
         }
         try {
             // 1) 校验魔数，确认是我们定义的协议。
-            byte[] logic = new byte[Message.LOGIC.length];
+            byte[] logic = new byte[Message.MAGIC.length];
             frame.readBytes(logic);
-            if(!Arrays.equals(logic,Message.LOGIC)){
+            if(!Arrays.equals(logic,Message.MAGIC)){
                 throw new IllegalAccessException("魔术不对");
             }
             // 2) 读取消息类型（请求/响应）。

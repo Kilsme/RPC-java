@@ -1,5 +1,4 @@
 package tech.insight.kilsme.rpc.register;
-
 import lombok.extern.slf4j.Slf4j;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
@@ -8,22 +7,22 @@ import org.apache.curator.x.discovery.ServiceDiscovery;
 import org.apache.curator.x.discovery.ServiceDiscoveryBuilder;
 import org.apache.curator.x.discovery.ServiceInstance;
 import org.apache.curator.x.discovery.details.JsonInstanceSerializer;
-import tech.insight.kilsme.rpc.ZKdemo;
 
-import java.security.Provider;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 
+/**
+ * 基于 Curator ServiceDiscovery 的 Zookeeper 注册中心实现。
+ */
 @Slf4j
-public class ZookeeperServiceRegister implements ServiceRegister {
+public class ZookeeperServiceRegister implements ServiceRegistry {
+    // RPC 服务统一根路径。
     private static final String BASE_RPC = "/Kilsme/rpc";
     private CuratorFramework client;
     private ServiceDiscovery<ServiceMetadata> discovery;
 
     @Override
-    public void init(RegisterConfig registerConfig) throws Exception {
-        //进行Zookeeper连接的初始化，创建必要的节点结构等。
+    public void init(RegistryConfig registerConfig) throws Exception {
+        // 初始化 ZK 客户端，并启动 ServiceDiscovery。
         client = CuratorFrameworkFactory.builder()
                 .connectString(registerConfig.getConnectString())
                 .sessionTimeoutMs(5000)
@@ -42,6 +41,7 @@ public class ZookeeperServiceRegister implements ServiceRegister {
     @Override
     public void registerService(ServiceMetadata metadata) {
         try {
+            // 把服务元数据包装为 ServiceInstance 写入 ZK。
             ServiceInstance<ServiceMetadata> instance = ServiceInstance
                     .<ServiceMetadata>builder()
                     .address(metadata.getHost())
@@ -59,9 +59,8 @@ public class ZookeeperServiceRegister implements ServiceRegister {
 
     @Override
     public List<ServiceMetadata> fetchServiceList(String serviceName) throws Exception {
-        //出现异常直接抛出
+        // 直接查询 serviceName 下所有实例，交由上层做负载均衡。
         return discovery.queryForInstances(serviceName).stream().map(ServiceInstance::getPayload).toList();
         //Collection<ServiceInstance<ServiceMetadata>> serviceInstances = discovery.queryForInstances(serviceName);
-
     }
 }

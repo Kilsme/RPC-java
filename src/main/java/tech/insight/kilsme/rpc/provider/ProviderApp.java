@@ -1,20 +1,26 @@
 package tech.insight.kilsme.rpc.provider;
 
 import tech.insight.kilsme.rpc.api.Add;
-import tech.insight.kilsme.rpc.register.RegisterConfig;
+import tech.insight.kilsme.rpc.register.RegistryConfig;
 
 /**
  * 服务端启动类：注册服务并监听端口。
  */
 public class ProviderApp {
     public static void main(String[] args) {
-        RegisterConfig registerConfig=new RegisterConfig();
+        // 1) 准备注册中心配置，Provider 启动后会把服务地址注册进去。
+        RegistryConfig registerConfig=new RegistryConfig();
         registerConfig.setRegisterType("zookeeper");
         registerConfig.setConnectString("127.0.0.1:2181");
-        // 启动 Provider，监听 8888 端口，等待 Consumer 发起 RPC 调用。
-        ProviderServer providerServer = new ProviderServer(8887,"127.0.0.1",registerConfig);
-        // 先注册接口实现，再启动网络监听。
+        ProviderProperties providerProperties = new ProviderProperties();
+        providerProperties.setHost("127.0.0.1");
+        providerProperties.setPort(8888);
+        providerProperties.setRegistryConfig(registerConfig);
+        // 2) 创建 ProviderServer，设置监听地址与端口。
+        ProviderServer providerServer = new ProviderServer(providerProperties);
+        // 3) 注册服务实现（接口 -> 实例）。
         providerServer.register(Add.class,new AddImpl());
+        // 4) 启动 Netty 服务并向注册中心发布服务元数据。
         providerServer.start();
 
     }

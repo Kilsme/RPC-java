@@ -16,7 +16,7 @@ public class ResponseEncoder extends MessageToByteEncoder<Response> {
     @Override
     protected void encode(ChannelHandlerContext channelHandlerContext, Response response, ByteBuf byteBuf) throws Exception {
         // 协议格式：length(4) + logic(魔数) + type(1) + body(JSON)。
-        byte[] logic = Message.LOGIC;
+        byte[] logic = Message.MAGIC;
         byte messageType = Message.MessageType.RESPONSE.getCode();
         byte[] body = serializeResponse(response);
         // length 不包含自身 4 字节，只表示后续载荷长度。

@@ -9,8 +9,12 @@ import org.apache.curator.x.discovery.ServiceDiscoveryBuilder;
 import org.apache.curator.x.discovery.ServiceInstance;
 import org.apache.curator.x.discovery.details.JsonInstanceSerializer;
 
+/**
+ * Curator + Zookeeper 最小示例：演示如何注册一个服务实例。
+ */
 public class ZKdemo {
     public static void main(String[] args) throws Exception {
+        // 1) 创建并启动 Zookeeper 客户端。
         CuratorFramework client = CuratorFrameworkFactory.builder()
                 .connectString("localhost:2181")
                 .sessionTimeoutMs(5000)
@@ -18,15 +22,21 @@ public class ZKdemo {
                 .retryPolicy(new ExponentialBackoffRetry(1000, 3))
                 .build();
         client.start();
+
+        // 2) 创建服务发现组件，约定根路径为 /Kilsme。
         ServiceDiscovery<Metadata> discovery = ServiceDiscoveryBuilder.builder(Metadata.class)
                 .client(client)
                 .basePath("/Kilsme")
                 .serializer(new JsonInstanceSerializer<>(Metadata.class))
                 .build();
         discovery.start();
+
+        // 3) 构造服务实例附带的业务元数据。
        Metadata metadata=new Metadata();
        metadata.setAge(18);
        metadata.setName("张三");
+
+        // 4) 组装服务实例并注册到 ZK。
         ServiceInstance<Metadata> instance = ServiceInstance.<Metadata>builder().name("ZHANG")
                 .address("127.0.0.1")
                 .port(8888)
@@ -34,6 +44,8 @@ public class ZKdemo {
                 .build();
         discovery.registerService(instance);
     }
+
+    // 示例业务元数据对象。
     @Data
     public static class Metadata{
         private String name;

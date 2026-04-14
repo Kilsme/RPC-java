@@ -8,14 +8,21 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Consumer 连接管理器：按 host:port 缓存并复用 Netty Channel。
+ */
 @Slf4j
 public  class ConnectionManager {
     // 连接缓存：key=host:port，value=可复用 channel 包装。
     private final Map<String, ChannelWrapper> channelTable = new ConcurrentHashMap<>();
     private final Bootstrap bootstrap;
+
+    // 注入统一 Bootstrap，保证连接参数一致。
     public ConnectionManager(Bootstrap bootstrap) {
         this.bootstrap = bootstrap;
     }
+
+    // 获取可用连接：优先复用，失效时由后续调用触发重建。
     public Channel getChannel(String host, int port) {
         String key = host + ":" + port;
         // 当缓存中没有连接时，创建新连接并放入表中。
@@ -39,7 +46,7 @@ public  class ConnectionManager {
         }
         return channel;
     }
-    //定义一个包装的内部类
+    // 轻量包装，便于后续扩展连接状态字段。
     private static class ChannelWrapper {
         final Channel channel;
         private ChannelWrapper(Channel channel) {

@@ -15,15 +15,15 @@ import java.nio.charset.StandardCharsets;
 public class RequestEncoder extends MessageToByteEncoder<Request> {
     @Override
     protected void encode(ChannelHandlerContext channelHandlerContext, Request request, ByteBuf byteBuf) throws Exception {
-        // 协议格式：length(4) + logic(魔数) + type(1) + body(JSON)。
-        byte[] logic = Message.LOGIC;
+        // 协议格式：length(4) + magic(魔数) + type(1) + body(JSON)。
+        byte[] magic = Message.MAGIC;
         byte messageType = Message.MessageType.REQUEST.getCode();
         byte[] body = serializeRequest(request);
         // length 不包含自身 4 字节，只表示后续载荷长度。
-        int len=logic.length+Byte.BYTES+body.length;
+        int len= magic.length+Byte.BYTES+body.length;
         // 按协议顺序写出，确保对端解码顺序一致。
         byteBuf.writeInt(len);
-        byteBuf.writeBytes(logic);
+        byteBuf.writeBytes(magic);
         byteBuf.writeByte(messageType);
         byteBuf.writeBytes(body);
     }
