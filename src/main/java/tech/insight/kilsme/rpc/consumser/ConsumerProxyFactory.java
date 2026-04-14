@@ -9,6 +9,9 @@ import org.checkerframework.checker.nullness.qual.NonNull;
 import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
 import tech.insight.kilsme.rpc.codec.RequestEncoder;
 import tech.insight.kilsme.rpc.exception.RpcException;
+import tech.insight.kilsme.rpc.loadbalance.LoadBalancer;
+import tech.insight.kilsme.rpc.loadbalance.RandomLoadBalancer;
+import tech.insight.kilsme.rpc.loadbalance.RoundRobinLoadBalancer;
 import tech.insight.kilsme.rpc.message.Request;
 import tech.insight.kilsme.rpc.message.Response;
 import tech.insight.kilsme.rpc.register.DefaultServiceRegister;
@@ -51,14 +54,28 @@ public class ConsumerProxyFactory {
     // 为目标接口创建 JDK 动态代理。
     public <I> I createConsumerProxy(Class<I> interfaceClass) {
         //通过 JDK 动态代理把本地接口调用转为远程 RPC 请求。
-        return (I) Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class[]{interfaceClass}, new ConsumerInvocationHandler(interfaceClass));
+        return (I) Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(),
+                new Class[]{interfaceClass}, new ConsumerInvocationHandler(interfaceClass,createLoadBalancer()));
+    }
+
+    private LoadBalancer createLoadBalancer() {
+        switch (this.consumerProperties.getLoadBalancePolicy()) {
+            case "robin":
+                return new RoundRobinLoadBalancer();
+            case "random":
+                return new RandomLoadBalancer();
+            default:
+                throw new IllegalArgumentException(this.consumerProperties.getLoadBalancePolicy() + "不支持");
+        }
     }
 
     public class ConsumerInvocationHandler implements InvocationHandler {
         final Class<?> interfaceClass;
+        final LoadBalancer loadBalancer;
 
-        public ConsumerInvocationHandler(Class<?> interfaceClass) {
+        public ConsumerInvocationHandler(Class<?> interfaceClass, LoadBalancer loadBalancer) {
             this.interfaceClass = interfaceClass;
+            this.loadBalancer = loadBalancer;
         }
 
         @Override
@@ -91,7 +108,8 @@ public class ConsumerProxyFactory {
                     throw new RpcException(interfaceClass.getName() + "没有找到服务");
                 }
                 // 2) 选择一个 Provider 并复用/创建连接。
-                ServiceMetadata providerMetadata = serviceMetadata.get(0);
+                //使用负载均衡策略
+                ServiceMetadata providerMetadata = loadBalancer.select(serviceMetadata);
                 Channel channel = manager.getChannel(providerMetadata.getHost(), providerMetadata.getPort());
                 if (channel == null) {
                     throw new RpcException("连接失败");
