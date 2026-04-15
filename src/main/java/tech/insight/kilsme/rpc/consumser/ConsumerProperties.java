@@ -24,5 +24,7 @@ public class ConsumerProperties {
     private String  retryPolicy="forking";
     // 注册中心配置（类型、地址等）。
     private RegistryConfig registryConfig=new RegistryConfig();
+    private int rpcPreSecond=10;//每秒只能进行调用十次rpc
+    private int rpcPreChannel=5;
 
 }

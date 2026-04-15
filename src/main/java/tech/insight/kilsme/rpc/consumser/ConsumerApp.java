@@ -3,6 +3,8 @@ package tech.insight.kilsme.rpc.consumser;
 import tech.insight.kilsme.rpc.api.Add;
 import tech.insight.kilsme.rpc.register.RegistryConfig;
 
+import java.util.concurrent.CyclicBarrier;
+
 /**
  * 消费端启动类：演示如何发起一次远程调用。
  */
@@ -18,15 +20,16 @@ public class ConsumerApp {
         ConsumerProxyFactory proxyFactory = new ConsumerProxyFactory(consumerProperties);
         // 重复调用用于观察连接复用、请求发送和响应回包日志。
         Add addConsumerProxy = proxyFactory.createConsumerProxy(Add.class);
-        while (true) {
-            try {
-                // 本地方法调用会被动态代理转换为一次 RPC 请求。
-                System.out.println(addConsumerProxy.add(1, 2));
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            // 每秒请求一次，方便观察调用链路。
-            Thread.sleep(1000);
+        CyclicBarrier cyclicBarrier = new CyclicBarrier(10);
+        for(int i=0;i<10;i++){
+            new Thread(() -> {
+                try {
+                    cyclicBarrier.await();
+                    System.out.println(addConsumerProxy.add(1, 2));
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }).start();
         }
 
     }

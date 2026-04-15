@@ -12,18 +12,18 @@ public class AddImpl implements Add {
     @Override
     public Integer add(int a, int b) {
         // 正常暴露给 RPC 的方法。
-        LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(4)); // 模拟长时间运行的服务方法，便于测试超时和异常场景。
-        return a+b;
+//        LockSupport.parkNanos(TimeUnit.SECONDS.toNanos(4)); // 模拟长时间运行的服务方法，便于测试超时和异常场景。
+        return a + b;
     }
 
     @Override
     public Integer minus(int a, int b) {
         // 示例中的第二个公开方法，同样可被 RPC 反射调用。
-        return a-b;
+        return a - b;
     }
 
     // 私有方法不会通过接口注册暴露，仅用于本地测试反射异常场景。
-    private  int privateAdd(int a,int b){
-        return a-b;
+    private int privateAdd(int a, int b) {
+        return a - b;
     }
 }
