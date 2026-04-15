@@ -4,6 +4,8 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.util.HashedWheelTimer;
+import io.netty.util.Timeout;
 import lombok.extern.slf4j.Slf4j;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
@@ -15,9 +17,9 @@ import tech.insight.kilsme.rpc.loadbalance.RoundRobinLoadBalancer;
 import tech.insight.kilsme.rpc.message.Request;
 import tech.insight.kilsme.rpc.message.Response;
 import tech.insight.kilsme.rpc.register.DefaultServiceRegister;
-import tech.insight.kilsme.rpc.register.RegistryConfig;
 import tech.insight.kilsme.rpc.register.ServiceMetadata;
 import tech.insight.kilsme.rpc.register.ServiceRegistry;
+import tech.insight.kilsme.rpc.retry.*;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -27,6 +29,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Consumer 动态代理工厂：把本地接口调用转换为远程 RPC 调用。
@@ -39,6 +42,7 @@ public class ConsumerProxyFactory {
     private final ConnectionManager manager;
     private final ServiceRegistry registry;
     private final ConsumerProperties consumerProperties;
+    private final HashedWheelTimer timeoutTimer;//定义时间轮
 
     public ConsumerProxyFactory(ConsumerProperties consumerProperties) throws Exception {
         // 使用统一门面，屏蔽具体注册中心实现差异。
@@ -48,6 +52,7 @@ public class ConsumerProxyFactory {
         this.manager = new ConnectionManager(bootstrap);
         this.inFlightRequestTable = new ConcurrentHashMap<>();
         this.consumerProperties = consumerProperties;
+        this.timeoutTimer = new HashedWheelTimer(1, TimeUnit.SECONDS, 64);
     }
 
     @SuppressWarnings("unchecked")
@@ -55,7 +60,19 @@ public class ConsumerProxyFactory {
     public <I> I createConsumerProxy(Class<I> interfaceClass) {
         //通过 JDK 动态代理把本地接口调用转为远程 RPC 请求。
         return (I) Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(),
-                new Class[]{interfaceClass}, new ConsumerInvocationHandler(interfaceClass,createLoadBalancer()));
+                new Class[]{interfaceClass}, new ConsumerInvocationHandler(interfaceClass, createLoadBalancer(), createRetryPolicy()));
+    }
+
+    private RetryPolicy createRetryPolicy() {
+        switch (consumerProperties.getRetryPolicy()) {
+            case "retrySame":
+                return new RetrySame();
+            case "failover":
+                return new FailoverRetryPolicy();
+            case "forking":
+                return new ForkingRetryPolicy();
+        }
+        throw new IllegalArgumentException("没有或者重试策略" + consumerProperties.getRetryPolicy());
     }
 
     private LoadBalancer createLoadBalancer() {
@@ -72,10 +89,12 @@ public class ConsumerProxyFactory {
     public class ConsumerInvocationHandler implements InvocationHandler {
         final Class<?> interfaceClass;
         final LoadBalancer loadBalancer;
+        final RetryPolicy retryPolicy;
 
-        public ConsumerInvocationHandler(Class<?> interfaceClass, LoadBalancer loadBalancer) {
+        public ConsumerInvocationHandler(Class<?> interfaceClass, LoadBalancer loadBalancer, RetryPolicy retryPolicy) {
             this.interfaceClass = interfaceClass;
             this.loadBalancer = loadBalancer;
+            this.retryPolicy = retryPolicy;
         }
 
         @Override
@@ -99,39 +118,67 @@ public class ConsumerProxyFactory {
             //数据一致性
             //心跳维护，临时数据
             //nacos  zookeeper
+            // 1) 从注册中心查可用 Provider 列表。
+            List<ServiceMetadata> serviceMetadata = registry.fetchServiceList(interfaceClass.getName());
+            if (serviceMetadata.isEmpty()) {
+                throw new RpcException(interfaceClass.getName() + "没有找到服务");
+            }
+            long startTime = System.currentTimeMillis();
+            // 2) 选择一个 Provider 并复用/创建连接。
+            //使用负载均衡策略
+            ServiceMetadata providerMetadata = loadBalancer.select(serviceMetadata);
+            Request request = buildRequest(method, args);
+            // 同步等待异步结果返回。 这个是阻塞等待
+            Response response;
             try {
-                // 用 Future 承接异步响应，最后在方法尾部 get() 同步返回。
-                CompletableFuture<Response> responseCompletableFuture = new CompletableFuture<>();
-                // 1) 从注册中心查可用 Provider 列表。
-                List<ServiceMetadata> serviceMetadata = registry.fetchServiceList(interfaceClass.getName());
-                if (serviceMetadata.isEmpty()) {
-                    throw new RpcException(interfaceClass.getName() + "没有找到服务");
-                }
-                // 2) 选择一个 Provider 并复用/创建连接。
-                //使用负载均衡策略
-                ServiceMetadata providerMetadata = loadBalancer.select(serviceMetadata);
-                Channel channel = manager.getChannel(providerMetadata.getHost(), providerMetadata.getPort());
-                if (channel == null) {
-                    throw new RpcException("连接失败");
-                }
-                Request request = buildRequest(method, args);
-                inFlightRequestTable.put(request.getRequestId(), responseCompletableFuture);//防止通信速度过快，导致response回来找不到request在table中
-                channel.writeAndFlush(request).addListener(f -> {
-                    if (!f.isSuccess()) {
-                        // 发送成功后登记请求，等待 Provider 返回同 requestId 的响应。
-                        inFlightRequestTable.remove(request.getRequestId());
-                        responseCompletableFuture.completeExceptionally(new RpcException("请求发送失败" + f.cause()));
-                    }
-                });
-                // 同步等待异步结果返回。 这个是阻塞等待
-                Response response = responseCompletableFuture.get(consumerProperties.getRequestTimeoutMs(), TimeUnit.MILLISECONDS);
-                return processResponse(response);
-            } catch (RpcException rpcException) {
-                throw rpcException;
+                CompletableFuture<Response> requestFuture = callRpcAsync(request, providerMetadata);
+                response = requestFuture.get(consumerProperties.getRequestTimeoutMs(), TimeUnit.MILLISECONDS);
             } catch (Exception e) {
-                throw new RuntimeException("RPC 调用异常");
+                //进行重试
+                long methodTime = consumerProperties.getMethodTimeOutMs() - (System.currentTimeMillis() - startTime);
+                if (methodTime <= 0) {
+                    throw new TimeoutException("方法超时");
+                }
+                RetryContext retryContext = new RetryContext();
+                retryContext.setFailService(providerMetadata);
+                retryContext.setServiceMetadataList(serviceMetadata);
+                retryContext.setMethodTimeoutMs(methodTime);
+                retryContext.setLoadBalancer(this.loadBalancer);
+                retryContext.setRequestTimeoutMs(consumerProperties.getRequestTimeoutMs());
+                retryContext.setDorpcFunction(provider -> callRpcAsync(buildRequest(method, args), provider));
+                //未知:provider是啥  失败了重试，重试了还失败了就不重试了
+                response = this.retryPolicy.retry(retryContext);
+            }
+            return processResponse(response);
+
+        }
+
+        private CompletableFuture<Response> callRpcAsync(Request request, ServiceMetadata provider) {
+            CompletableFuture<Response> responseFuture = new CompletableFuture<>();
+            Channel channel = manager.getChannel(provider.getHost(), provider.getPort());
+            if (channel == null) {
+                responseFuture.completeExceptionally(new RpcException("Provider连接失败"));
+                return responseFuture;
             }
 
+            inFlightRequestTable.put(request.getRequestId(), responseFuture);//防止通信速度过快，导致response回来找不到request在table中
+            //进行兜底策略 定时任务
+            Timeout timeout = timeoutTimer.newTimeout((t) -> responseFuture.completeExceptionally(new TimeoutException()),
+                    consumerProperties.getRequestTimeoutMs(),
+                    TimeUnit.MILLISECONDS);
+            responseFuture.whenComplete((f, e) -> {
+                inFlightRequestTable.remove(request.getRequestId());
+                timeout.cancel();
+            });//无论是否成功，结束后都要在在途请求中进行移除
+            channel.writeAndFlush(request).addListener(f -> {
+                log.info("发送请求{}到{}:{} questId{}", request, provider.getHost(), provider.getPort(), request.getRequestId());
+                if (!f.isSuccess()) {
+                    // 发送成功后登记请求，等待 Provider 返回同 requestId 的响应。
+                    responseFuture.completeExceptionally(new RpcException("请求发送失败" + f.cause()));
+                }
+            });
+
+            return responseFuture;
         }
 
         private Object processResponse(Response response) {

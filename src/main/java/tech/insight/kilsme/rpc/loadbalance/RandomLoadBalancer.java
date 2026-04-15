@@ -10,7 +10,7 @@ public class RandomLoadBalancer implements LoadBalancer{
     private final Random random = new Random();
     @Override
     public ServiceMetadata select(List<ServiceMetadata> serviceMetadataList) {
-        int MetadataIndex =random.nextInt(0,serviceMetadataList.size());
+        int MetadataIndex =random.nextInt(serviceMetadataList.size());
         return serviceMetadataList.get(Math.abs(MetadataIndex));
     }
 }

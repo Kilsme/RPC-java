@@ -14,7 +14,7 @@ public class ProviderApp {
         registerConfig.setConnectString("127.0.0.1:2181");
         ProviderProperties providerProperties = new ProviderProperties();
         providerProperties.setHost("127.0.0.1");
-        providerProperties.setPort(8888);
+        providerProperties.setPort(8889);
         providerProperties.setRegistryConfig(registerConfig);
         // 2) 创建 ProviderServer，设置监听地址与端口。
         ProviderServer providerServer = new ProviderServer(providerProperties);

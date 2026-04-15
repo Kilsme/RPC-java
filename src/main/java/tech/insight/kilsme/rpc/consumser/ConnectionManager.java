@@ -16,7 +16,6 @@ public  class ConnectionManager {
     // 连接缓存：key=host:port，value=可复用 channel 包装。
     private final Map<String, ChannelWrapper> channelTable = new ConcurrentHashMap<>();
     private final Bootstrap bootstrap;
-
     // 注入统一 Bootstrap，保证连接参数一致。
     public ConnectionManager(Bootstrap bootstrap) {
         this.bootstrap = bootstrap;

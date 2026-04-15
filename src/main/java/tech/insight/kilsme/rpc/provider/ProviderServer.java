@@ -97,8 +97,10 @@ public class ProviderServer {
                 return;
             }
             try {
+                long startTime=System.currentTimeMillis();
                 Object result = invocation.invoke(request.getMethodName(), request.getParamsClass(), request.getParams());
-                log.info("{}函数被远程调用了{}，结果是{},requestId{}", request.getServiceName(), request.getMethodName(), result, request.getRequestId());
+                log.info("{}函数被远程调用了{}，结果是{},requestId{},耗时是{}", request.getServiceName(), request.getMethodName(), result,
+                        request.getRequestId(),System.currentTimeMillis()-startTime);
                 channelHandlerContext.writeAndFlush(Response.success(result, request.getRequestId()));
             } catch (Exception e) {
                 Response failResp = Response.fail(String.format("%s.%s 调用失败: %s", request.getServiceName(), request.getMethodName(), e.getMessage()), request.getRequestId());
