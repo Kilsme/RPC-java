@@ -9,17 +9,28 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
+/**
+ * 重试上下文：封装一次重试决策所需的全部输入参数。
+ */
 @Data
 public class RetryContext {
+    // 首次调用失败的 Provider。
     private ServiceMetadata failService;
-    private List<ServiceMetadata>serviceMetadataList;
+    // 当前服务对应的可用 Provider 列表。
+    private List<ServiceMetadata> serviceMetadataList;
+    // 方法级总超时预算（包含重试过程）。
     private long methodTimeoutMs;
+    // 单次 RPC 请求超时。
     private long requestTimeoutMs;
+    // 负载均衡策略，用于在候选节点中选目标节点。
     private LoadBalancer loadBalancer;
-    //TODO
-    private Function<ServiceMetadata, CompletableFuture<Response>> dorpcFunction;
-    //进行发送请求函数
-    public CompletableFuture<Response>doRpc(ServiceMetadata serviceMetadata){
-      return dorpcFunction.apply(serviceMetadata);
+    // 发起一次异步 RPC 的函数式入口。
+    private Function<ServiceMetadata, CompletableFuture<Response>> dorpcFunction;//参数和返回值
+
+    // 对指定 Provider 发起一次 RPC 调用。
+    public CompletableFuture<Response> doRpc(ServiceMetadata serviceMetadata) {
+        return dorpcFunction.apply(serviceMetadata);
     }
+
+
 }

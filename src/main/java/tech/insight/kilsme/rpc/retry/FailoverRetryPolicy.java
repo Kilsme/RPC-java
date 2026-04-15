@@ -9,17 +9,23 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Failover 重试策略：失败后切换到其他 Provider 再调用一次。
+ */
 public class FailoverRetryPolicy implements RetryPolicy {
     @Override
     public Response retry(RetryContext retryContext) throws Exception {
-        //向其他provider进行发送请求
+        // 复制一份候选列表，避免直接修改原始数据。
         List<ServiceMetadata> serviceMetadataList = new ArrayList<>(retryContext.getServiceMetadataList());
         if (serviceMetadataList.isEmpty()) {
             throw new RpcException("没有重试的provider");
         }
+        // 从候选中移除首个失败节点，避免立即打到同一故障节点。
         serviceMetadataList.remove(retryContext.getFailService());
+        // 通过负载均衡策略重新挑选目标实例。
         ServiceMetadata failoverService = retryContext.getLoadBalancer().select(serviceMetadataList);
         CompletableFuture<Response> future = retryContext.doRpc(failoverService);
+        // 受请求超时与方法总超时共同约束。
         return future.get(Math.min(retryContext.getRequestTimeoutMs(), retryContext.getMethodTimeoutMs()), TimeUnit.MILLISECONDS);
 
     }

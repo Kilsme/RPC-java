@@ -146,6 +146,20 @@ public class ConsumerProxyFactory {
                 retryContext.setLoadBalancer(this.loadBalancer);
                 retryContext.setRequestTimeoutMs(consumerProperties.getRequestTimeoutMs());
                 retryContext.setDorpcFunction(provider -> callRpcAsync(buildRequest(method, args), provider));
+                     /*
+    // 这是一个匿名内部类写法，等同于上面的 Lambda
+retryContext.setDorpcFunction(new Function<ServiceMetadata, CompletableFuture<Response>>() {
+    @Override
+    public CompletableFuture<Response> apply(ServiceMetadata provider) {
+        // 1. 构建请求对象 (使用外部传入的 method 和 args)
+        RpcRequest request = buildRequest(method, args);
+
+        // 2. 发起真正的异步 RPC 调用
+        // 注意：这里使用了传入的 provider 作为目标
+        return callRpcAsync(request, provider);
+    }
+});
+     */
                 //未知:provider是啥  失败了重试，重试了还失败了就不重试了
                 response = this.retryPolicy.retry(retryContext);
             }

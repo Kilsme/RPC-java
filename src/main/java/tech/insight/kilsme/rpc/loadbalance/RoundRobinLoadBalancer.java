@@ -4,11 +4,19 @@ import tech.insight.kilsme.rpc.register.ServiceMetadata;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-//进行轮询的负载均衡器
+
+/**
+ * 轮询负载均衡：按顺序依次选择 Provider。
+ * <p>
+ * 通过原子自增计数器记录调用次数，再对实例数取模得到目标下标。
+ */
 public class RoundRobinLoadBalancer implements LoadBalancer{
+    // 全局递增序号，保证并发下下标计算安全。
     private final AtomicInteger index= new AtomicInteger();
+
     @Override
     public ServiceMetadata select(List<ServiceMetadata> serviceMetadataList) {
+        // 例如 size=3 时，下标序列为 0,1,2,0,1,2...
         int MetadataIndex = index.getAndIncrement() % serviceMetadataList.size();
         return serviceMetadataList.get(Math.abs(MetadataIndex));
     }
