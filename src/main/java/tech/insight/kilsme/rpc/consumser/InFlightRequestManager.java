@@ -17,6 +17,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 @Slf4j
+/**
+ * 在途请求管理器（In-Flight Request Manager）。
+ *
+ * <p>作用：
+ * <ul>
+ *     <li>维护 requestId -> CompletableFuture 的映射，实现请求/响应对齐。</li>
+ *     <li>为每个请求注册超时任务，防止响应丢失导致永久阻塞。</li>
+ *     <li>执行双层限流：全局并发限流 + 单 Provider 维度限流。</li>
+ * </ul>
+ */
 public class InFlightRequestManager {
     private  final Map<ServiceMetadata,Limiter>channelLimiterMap;//每一个hashmap都有自己的limiter进行限流
     private final Map<Integer, CompletableFuture<Response>> inFlightRequestTable;
@@ -28,10 +38,18 @@ public class InFlightRequestManager {
         this.inFlightRequestTable = new ConcurrentHashMap<>();
         this.consumerProperties=consumerProperties;
         this.timeoutTimer = new HashedWheelTimer(100,TimeUnit.MILLISECONDS,256);
-        this.globalLimiter =new ConcurrencyLimiter(consumerProperties.getRpcPreSecond());
+        this.globalLimiter =new ConcurrencyLimiter(consumerProperties.getRpcPreSecond());//采用的是并发限流
         this.channelLimiterMap=new ConcurrentHashMap<>();
     }
 
+    /**
+     * 创建并登记一次在途请求。
+     *
+     * @param request 本次 RPC 请求
+     * @param timeOuts 请求超时时间（毫秒）
+     * @param serviceMetadata 目标 Provider 元数据
+     * @return 与该请求绑定的响应 Future
+     */
     public CompletableFuture<Response> inFlightRequestTable(Request request, long timeOuts, ServiceMetadata serviceMetadata){
         CompletableFuture<Response> responseFuture = new CompletableFuture<>();
          if(!globalLimiter.tryAcquire()){
@@ -57,6 +75,18 @@ public class InFlightRequestManager {
         });//无论是否成功，结束后都要在在途请求中进行移除
         return responseFuture;
     }
+    public void cleatChannel(ServiceMetadata metadata){
+        channelLimiterMap.remove(metadata);
+
+    }
+
+    /**
+     * 用响应完成对应请求的 Future。
+     *
+     * @param requestId 请求 ID
+     * @param response 响应对象
+     * @return 是否成功找到并完成
+     */
     public boolean completeRuest(int requestId,Response response){
         CompletableFuture<Response>future=inFlightRequestTable.remove(requestId);
         if(future==null){
@@ -66,6 +96,10 @@ public class InFlightRequestManager {
 
         return  future.complete(response);
     }
+
+    /**
+     * 用异常结束对应请求（用于发送失败、解码失败等场景）。
+     */
     public boolean completeExceptionallyRequest(int requestId,Exception e){
         CompletableFuture<Response>future=inFlightRequestTable.remove(requestId);
         if(future==null){

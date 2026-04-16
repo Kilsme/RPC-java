@@ -2,6 +2,8 @@ package tech.insight.kilsme.rpc.api;
 
 /**
  * RPC 服务契约：定义一个加法方法。
+ *
+ * <p>在 RPC 里，接口比实现更重要：Consumer 只认识这个接口，Provider 负责提供对应实现。</p>
  */
 public interface Add {
     /**

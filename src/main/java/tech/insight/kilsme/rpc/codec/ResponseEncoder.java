@@ -11,11 +11,14 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * 响应编码器：把 Response 对象编码为 RPC 协议字节流。
+ *
+ * <p>Provider 执行完业务后，会把结果封装成 Response，再由这个编码器写回到 TCP 流中。</p>
  */
 public class ResponseEncoder extends MessageToByteEncoder<Response> {
     @Override
     protected void encode(ChannelHandlerContext channelHandlerContext, Response response, ByteBuf byteBuf) throws Exception {
         // 协议格式：length(4) + logic(魔数) + type(1) + body(JSON)。
+        // 与 RequestEncoder 保持一致，避免 Consumer 无法正确解码。
         byte[] logic = Message.MAGIC;
         byte messageType = Message.MessageType.RESPONSE.getCode();
         byte[] body = serializeResponse(response);

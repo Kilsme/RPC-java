@@ -4,14 +4,11 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
-import io.netty.util.HashedWheelTimer;
-import io.netty.util.Timeout;
 import lombok.extern.slf4j.Slf4j;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
 import tech.insight.kilsme.rpc.codec.RequestEncoder;
 import tech.insight.kilsme.rpc.exception.RpcException;
-import tech.insight.kilsme.rpc.limit.RateLimiter;
 import tech.insight.kilsme.rpc.loadbalance.LoadBalancer;
 import tech.insight.kilsme.rpc.loadbalance.RandomLoadBalancer;
 import tech.insight.kilsme.rpc.loadbalance.RoundRobinLoadBalancer;
@@ -26,11 +23,18 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.*;
 
 /**
- * Consumer 动态代理工厂：把本地接口调用转换为远程 RPC 调用。
+ * Consumer 动态代理工厂。
+ *
+ * <p>核心职责：
+ * <ul>
+ *     <li>为业务接口创建 JDK 动态代理，把本地方法调用转成 RPC 请求。</li>
+ *     <li>从注册中心拉取可用 Provider 列表，并通过负载均衡选择目标节点。</li>
+ *     <li>通过 Netty 发送请求并异步接收响应，再用 Future 同步返回给调用方。</li>
+ *     <li>在失败场景下按配置执行重试策略（同机重试/故障转移/并发竞速）。</li>
+ * </ul>
  */
 @Slf4j
 public class ConsumerProxyFactory {
@@ -41,25 +45,45 @@ public class ConsumerProxyFactory {
     private final ConsumerProperties consumerProperties;
     private final InFlightRequestManager inFlightRequestManager;
 
+    /**
+     * 初始化消费端基础组件。
+     *
+     * <p>这里会完成三件关键事情：
+     * <ul>
+     *     <li>初始化在途请求管理器：负责 requestId 和 Future 的映射、超时和限流；</li>
+     *     <li>初始化注册中心门面：对外屏蔽 Zookeeper / Redis 等实现差异；</li>
+     *     <li>初始化连接管理器：负责和 Provider 建链、复用连接、收响应。</li>
+     * </ul>
+     *
+     * @param consumerProperties 消费端配置（超时、重试、负载均衡、注册中心等）
+     */
     public ConsumerProxyFactory(ConsumerProperties consumerProperties) throws Exception {
         this.inFlightRequestManager = new InFlightRequestManager(
                 consumerProperties);
         // 使用统一门面，屏蔽具体注册中心实现差异。
         this.registry = new DefaultServiceRegister();
         this.registry.init(consumerProperties.getRegistryConfig());
-        Bootstrap bootstrap = crateBootstrap(consumerProperties);
-        this.manager = new ConnectionManager(bootstrap);
+        this.manager = new ConnectionManager(inFlightRequestManager,consumerProperties);
         this.consumerProperties = consumerProperties;
     }
 
+    /**
+     * 为目标接口创建消费端代理。
+     *
+     * <p>调用这个代理对象上的方法时，会进入 {@link ConsumerInvocationHandler#invoke}，
+     * 然后走完整的 RPC 发送/接收流程。
+     */
     @SuppressWarnings("unchecked")
-    // 为目标接口创建 JDK 动态代理。
     public <I> I createConsumerProxy(Class<I> interfaceClass) {
-        //通过 JDK 动态代理把本地接口调用转为远程 RPC 请求。
+        // 通过 JDK 动态代理把本地接口调用转为远程 RPC 请求。
+        // 调用方拿到的并不是一个真实实现类，而是一个“拦截器代理对象”。
         return (I) Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(),
                 new Class[]{interfaceClass}, new ConsumerInvocationHandler(interfaceClass, createLoadBalancer(), createRetryPolicy()));
     }
 
+    /**
+     * 根据配置创建重试策略实例。
+     */
     private RetryPolicy createRetryPolicy() {
         switch (consumerProperties.getRetryPolicy()) {
             case "retrySame":
@@ -72,6 +96,9 @@ public class ConsumerProxyFactory {
         throw new IllegalArgumentException("没有或者重试策略" + consumerProperties.getRetryPolicy());
     }
 
+    /**
+     * 根据配置创建负载均衡策略实例。
+     */
     private LoadBalancer createLoadBalancer() {
         switch (this.consumerProperties.getLoadBalancePolicy()) {
             case "robin":
@@ -83,6 +110,9 @@ public class ConsumerProxyFactory {
         }
     }
 
+    /**
+     * 代理调用处理器：每次接口方法调用都会进入这里。
+     */
     public class ConsumerInvocationHandler implements InvocationHandler {
         final Class<?> interfaceClass;
         final LoadBalancer loadBalancer;
@@ -94,6 +124,21 @@ public class ConsumerProxyFactory {
             this.retryPolicy = retryPolicy;
         }
 
+        /**
+         * 执行一次完整的 RPC 调用。
+         *
+         * <p>这段逻辑是 Consumer 侧的“主入口”，每次业务代码调用代理对象的方法都会进入这里。
+         * 整体可以理解为：
+         * <ol>
+         *     <li>先判断是不是 `toString/equals/hashCode` 这类基础方法；</li>
+         *     <li>从注册中心拿到服务列表；</li>
+         *     <li>通过负载均衡选一个目标 Provider；</li>
+         *     <li>把方法名、参数、服务名打包成 Request；</li>
+         *     <li>通过 Netty 异步发送，并等待 Future 完成；</li>
+         *     <li>如果失败，则交给重试策略处理；</li>
+         *     <li>最后把 Response 转成真正的业务返回值。</li>
+         * </ol>
+         */
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             // 先处理 Object 通用方法，避免走远程调用。
@@ -109,12 +154,10 @@ public class ConsumerProxyFactory {
                 }
                 throw new UnsupportedOperationException("代理对象不支持这个函数");
             }
-            //consumer-->center  provider
-            //注册中心 保存数据
-            //通知机制
-            //数据一致性
-            //心跳维护，临时数据
-            //nacos  zookeeper
+            // 下面这些注释是对“注册中心角色”的理解提示：
+            // consumer -> center -> provider，consumer 不直接访问 provider 本地对象，
+            // 只能通过注册中心发现服务地址；而注册中心通常还会承担通知、临时节点、心跳等职责。
+
             // 1) 从注册中心查可用 Provider 列表。
             List<ServiceMetadata> serviceMetadata = registry.fetchServiceList(interfaceClass.getName());
             if (serviceMetadata.isEmpty()) {
@@ -122,10 +165,11 @@ public class ConsumerProxyFactory {
             }
             long startTime = System.currentTimeMillis();
             // 2) 选择一个 Provider 并复用/创建连接。
-            //使用负载均衡策略
+            // 使用负载均衡策略从多个实例中挑一个目标节点。
             ServiceMetadata providerMetadata = loadBalancer.select(serviceMetadata);
             Request request = buildRequest(method, args);
-            // 同步等待异步结果返回。 这个是阻塞等待
+            // 同步等待异步结果返回。
+            // 这里先发起异步调用，再通过 Future.get() 阻塞等待结果，形成“异步发送、同步拿结果”的效果。
             Response response;
             try {
                 CompletableFuture<Response> requestFuture = callRpcAsync(request, providerMetadata);
@@ -138,11 +182,21 @@ public class ConsumerProxyFactory {
 
         }
 
+        /**
+         * 统一重试入口：把本次调用上下文封装为 RetryContext 再交给策略执行。
+         *
+         * <p>这里的设计思想是：
+         * <ul>
+         *     <li>业务调用方只关心“调用成功还是失败”；</li>
+         *     <li>具体是同机重试、换节点重试，还是并发竞速，由策略对象决定；</li>
+         *     <li>方法总超时必须被严格控制，不能因为重试把一个调用拖得无限久。</li>
+         * </ul>
+         */
         private Response doRetry(Method method, Object[] args, Exception e, long startTime, ServiceMetadata providerMetadata, List<ServiceMetadata> serviceMetadata) throws Exception {
-            if(e instanceof ExecutionException ee&&ee.getCause() instanceof  RpcException  rpcException&&!rpcException.retry() )
-            {
-                throw  rpcException;
-            }Response response;
+            if (e instanceof ExecutionException ee && ee.getCause() instanceof RpcException rpcException && !rpcException.retry()) {
+                throw rpcException;
+            }
+            Response response;
             long methodTime = consumerProperties.getMethodTimeOutMs() - (System.currentTimeMillis() - startTime);
             if (methodTime <= 0) {
                 throw new TimeoutException("方法超时");
@@ -169,16 +223,26 @@ retryContext.setDorpcFunction(new Function<ServiceMetadata, CompletableFuture<Re
     }
 });
      */
-            //未知:provider是啥  失败了重试，重试了还失败了就不重试了
+            // 这里真正执行策略重试；失败了重试，重试后还失败就继续把异常往上抛。
             response = this.retryPolicy.retry(retryContext);
             return response;
         }
 
+        /**
+         * 发起一次异步 RPC 调用。
+         *
+         * <p>这里做三件事：
+         * <ol>
+         *     <li>在 in-flight 表中登记 requestId -> Future，方便响应回来时做配对；</li>
+         *     <li>获取或建立到目标 Provider 的连接；</li>
+         *     <li>把 Request 写到 Netty Channel 中，失败时立即让 Future 进入异常态。</li>
+         * </ol>
+         */
         private CompletableFuture<Response> callRpcAsync(Request request, ServiceMetadata provider) {
             CompletableFuture<Response> responseFuture = inFlightRequestManager.inFlightRequestTable(request,
                     consumerProperties.getRequestTimeoutMs(),
                     provider);
-            Channel channel = manager.getChannel(provider.getHost(), provider.getPort());
+            Channel channel = manager.getChannel(provider);
             if (channel == null) {
                 responseFuture.completeExceptionally(new RpcException("Provider连接失败"));
                 return responseFuture;
@@ -186,7 +250,8 @@ retryContext.setDorpcFunction(new Function<ServiceMetadata, CompletableFuture<Re
             channel.writeAndFlush(request).addListener(f -> {
                 log.info("发送请求{}到{}:{} questId{}", request, provider.getHost(), provider.getPort(), request.getRequestId());
                 if (!f.isSuccess()) {
-                    // 发送成功后登记请求，等待 Provider 返回同 requestId 的响应。
+                    // 如果发送失败，说明这个请求根本没有真正到达 Provider，
+                    // 这里直接把 Future 标记为异常，唤醒等待中的调用线程。
                     responseFuture.completeExceptionally(new RpcException("请求发送失败" + f.cause()));
                 }
             });
@@ -194,6 +259,12 @@ retryContext.setDorpcFunction(new Function<ServiceMetadata, CompletableFuture<Re
             return responseFuture;
         }
 
+        /**
+         * 统一响应处理：成功返回业务值，失败抛出业务异常。
+         *
+         * <p>对调用方来说，远程响应最终要么是“业务结果”，要么是“业务异常”。
+         * 这里做的是把协议层的 Response 转成方法调用层能理解的返回值。
+         */
         private Object processResponse(Response response) {
             if (response.getCode() == 200) {
                 return response.getRes();
@@ -201,6 +272,12 @@ retryContext.setDorpcFunction(new Function<ServiceMetadata, CompletableFuture<Re
             throw new RpcException(response.getErrorMessage());
         }
 
+        /**
+         * 根据本次方法调用构建 RPC 请求体。
+         *
+         * <p>这一步相当于把“本地方法调用信息”翻译成“网络传输所需的协议对象”。
+         * Provider 端收到这个对象后，就能根据 serviceName + methodName + paramsClass 进行反射调用。
+         */
         private @NonNull Request buildRequest(Method method, Object[] args) {
             // 组装本次 RPC 请求。
             Request request = new Request();
@@ -211,54 +288,6 @@ retryContext.setDorpcFunction(new Function<ServiceMetadata, CompletableFuture<Re
             request.setServiceName(interfaceClass.getName());
             return request;
         }
-    }
-
-    // 创建客户端 Bootstrap，并配置编解码与响应处理器。
-    private Bootstrap crateBootstrap(ConsumerProperties consumerProperties) {
-        // Bootstrap 对应“客户端连接配置”。
-        Bootstrap bootstrap = new Bootstrap();
-        bootstrap.group(new NioEventLoopGroup(consumerProperties.getWorkThreadNum()))
-                .channel(NioSocketChannel.class)
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, consumerProperties.getConnectTimeoutMs())
-                // 客户端只有一个连接，因此使用 handler 初始化该连接的 pipeline。
-                .handler(new ChannelInitializer<NioSocketChannel>() {
-                    @Override
-                    protected void initChannel(NioSocketChannel nioSocketChannel) throws Exception {
-                        // 入站：先按协议解码，再交给业务 handler 处理 Response。
-                        // 出站：RequestEncoder 在 writeAndFlush(Request) 时自动生效。
-                        nioSocketChannel.pipeline()
-                                .addLast(new KilsmeDecoder())
-                                .addLast(new RequestEncoder())
-                                // 业务入站处理器：收到响应后完成 Future，并关闭连接。
-                                .addLast(new ConsumerHandler());
-                    }
-                });
-        return bootstrap;
-    }
-
-    private class ConsumerHandler extends SimpleChannelInboundHandler<Response> {
-        @Override
-        protected void channelRead0(ChannelHandlerContext channelHandlerContext, Response response) throws Exception {
-            inFlightRequestManager.completeRuest(response.getRequestId(), response);
-        }
-
-        @Override
-        public void channelActive(ChannelHandlerContext ctx) throws Exception {
-            log.info("地址：{}连接了", ctx.channel().remoteAddress());
-        }
-
-        @Override
-        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-            //链路发生异常
-            log.error("发生了异常", cause);
-            ctx.channel().close();
-        }
-
-        @Override
-        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-            log.info("地址：{}断开了", ctx.channel().remoteAddress());
-        }
-
     }
 
 }

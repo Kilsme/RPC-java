@@ -7,6 +7,8 @@ import java.util.concurrent.CyclicBarrier;
 
 /**
  * 消费端启动类：演示如何发起一次远程调用。
+ *
+ * <p>这个类的重点不是业务逻辑，而是演示 Consumer 如何通过动态代理调用远程接口。</p>
  */
 public class ConsumerApp {
     public static void main(String[] args) throws Exception {
@@ -15,10 +17,13 @@ public class ConsumerApp {
         registerConfig.setRegisterType("zookeeper");
         registerConfig.setConnectString("127.0.0.1:2181");
         ConsumerProperties consumerProperties = new ConsumerProperties();
+        consumerProperties.setRpcPreSecond(100);
+        consumerProperties.setRpcPreChannel(100);
         consumerProperties.setRegistryConfig(registerConfig);
         // 创建代理工厂：内部会初始化注册中心客户端。
         ConsumerProxyFactory proxyFactory = new ConsumerProxyFactory(consumerProperties);
         // 重复调用用于观察连接复用、请求发送和响应回包日志。
+        // 这里用 10 个线程同时发起调用，是为了更容易观察限流、并发和回包匹配过程。
         Add addConsumerProxy = proxyFactory.createConsumerProxy(Add.class);
         CyclicBarrier cyclicBarrier = new CyclicBarrier(10);
         for(int i=0;i<10;i++){

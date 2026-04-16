@@ -12,10 +12,14 @@ import java.util.List;
 
 /**
  * 基于 Curator ServiceDiscovery 的 Zookeeper 注册中心实现。
+ *
+ * <p>Provider 启动后会把自己的 `ServiceMetadata` 包装成 `ServiceInstance` 注册进 Zookeeper，
+ * Consumer 则通过服务名查询到所有实例，再从中挑选一个可用节点。</p>
  */
 @Slf4j
 public class ZookeeperServiceRegister implements ServiceRegistry {
     // RPC 服务统一根路径。
+    // 这里所有服务都会挂在这个 basePath 下面，方便统一管理和查询。
     private static final String BASE_RPC = "/Kilsme/rpc";
     private CuratorFramework client;
     private ServiceDiscovery<ServiceMetadata> discovery;
@@ -23,6 +27,7 @@ public class ZookeeperServiceRegister implements ServiceRegistry {
     @Override
     public void init(RegistryConfig registerConfig) throws Exception {
         // 初始化 ZK 客户端，并启动 ServiceDiscovery。
+        // Curator 会帮我们处理与 Zookeeper 的会话、重试和服务发现细节。
         client = CuratorFrameworkFactory.builder()
                 .connectString(registerConfig.getConnectString())
                 .sessionTimeoutMs(5000)
@@ -42,6 +47,7 @@ public class ZookeeperServiceRegister implements ServiceRegistry {
     public void registerService(ServiceMetadata metadata) {
         try {
             // 把服务元数据包装为 ServiceInstance 写入 ZK。
+            // payload 里存的是业务元数据，name/address/port 则是发现服务时最常用的信息。
             ServiceInstance<ServiceMetadata> instance = ServiceInstance
                     .<ServiceMetadata>builder()
                     .address(metadata.getHost())
@@ -60,6 +66,7 @@ public class ZookeeperServiceRegister implements ServiceRegistry {
     @Override
     public List<ServiceMetadata> fetchServiceList(String serviceName) throws Exception {
         // 直接查询 serviceName 下所有实例，交由上层做负载均衡。
+        // 这里返回的是 payload，也就是 ServiceMetadata，而不是 ServiceInstance 本身。
         return discovery.queryForInstances(serviceName).stream().map(ServiceInstance::getPayload).toList();
         //Collection<ServiceInstance<ServiceMetadata>> serviceInstances = discovery.queryForInstances(serviceName);
     }

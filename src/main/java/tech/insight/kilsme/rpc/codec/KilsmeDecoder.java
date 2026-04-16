@@ -14,6 +14,8 @@ import java.util.Objects;
 
 /**
  * 协议解码器：把字节流反序列化为 Request/Response。
+ *
+ * <p>它负责把网络中的二进制数据还原成 Java 对象，是 RPC 协议进入业务逻辑前的第一道关卡。</p>
  */
 public class KilsmeDecoder extends LengthFieldBasedFrameDecoder {
     public KilsmeDecoder(){
@@ -43,14 +45,17 @@ public class KilsmeDecoder extends LengthFieldBasedFrameDecoder {
         }
         try {
             // 1) 校验魔数，确认是我们定义的协议。
+            // 如果魔数不对，说明对端发来的不是当前 RPC 框架的数据。
             byte[] logic = new byte[Message.MAGIC.length];
             frame.readBytes(logic);
             if(!Arrays.equals(logic,Message.MAGIC)){
                 throw new IllegalAccessException("魔术不对");
             }
             // 2) 读取消息类型（请求/响应）。
+            // 同一条连接上既可能传请求，也可能传响应，必须通过这个字段区分。
             byte messageType = frame.readByte();
             // 3) 剩余部分全部作为 JSON body。
+            // body 里真正存的是 Request/Response 的字段内容。
             byte[] body = new byte[frame.readableBytes()];
             frame.readBytes(body);
             // 4) 按消息类型反序列化为具体对象。

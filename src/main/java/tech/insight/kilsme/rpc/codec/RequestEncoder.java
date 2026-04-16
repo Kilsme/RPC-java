@@ -11,11 +11,14 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * 请求编码器：把 Request 对象编码为 RPC 协议字节流。
+ *
+ * <p>Consumer 发出去的每一个 RPC 请求，最终都会被编码成一段标准报文。</p>
  */
 public class RequestEncoder extends MessageToByteEncoder<Request> {
     @Override
     protected void encode(ChannelHandlerContext channelHandlerContext, Request request, ByteBuf byteBuf) throws Exception {
         // 协议格式：length(4) + magic(魔数) + type(1) + body(JSON)。
+        // 这个顺序必须和 KilsmeDecoder 的读取顺序完全一致。
         byte[] magic = Message.MAGIC;
         byte messageType = Message.MessageType.REQUEST.getCode();
         byte[] body = serializeRequest(request);
