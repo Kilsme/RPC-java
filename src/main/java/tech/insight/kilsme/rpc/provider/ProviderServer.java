@@ -131,7 +131,6 @@ public class ProviderServer {
                 globallLimiter.release();
                 ctx.writeAndFlush(Response.fail("provider限流", request.getRequestId()));
                 return;
-
             }
             ctx.channel().attr(GLOBAL_PERMITS).get().incrementAndGet();
             ctx.fireChannelRead(request);
@@ -139,7 +138,6 @@ public class ProviderServer {
 
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-            Limiter limiter = null;
             promise.addListener(future -> {
                 // 响应写回后再释放许可，确保“占用 -> 处理 -> 归还”生命周期完整。
                 int remain = ctx.channel().attr(GLOBAL_PERMITS).get().getAndDecrement();//进行减一
@@ -149,7 +147,6 @@ public class ProviderServer {
                 }
             });
             ctx.write(msg, promise);
-
         }
 
         @Override

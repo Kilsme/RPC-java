@@ -17,8 +17,8 @@ public class ConsumerApp {
         registerConfig.setRegisterType("zookeeper");
         registerConfig.setConnectString("127.0.0.1:2181");
         ConsumerProperties consumerProperties = new ConsumerProperties();
-        consumerProperties.setRpcPreSecond(100);
-        consumerProperties.setRpcPreChannel(100);
+        consumerProperties.setRpcPreSecond(1);
+        consumerProperties.setRpcPreChannel(1);
         consumerProperties.setRegistryConfig(registerConfig);
         // 创建代理工厂：内部会初始化注册中心客户端。
         ConsumerProxyFactory proxyFactory = new ConsumerProxyFactory(consumerProperties);

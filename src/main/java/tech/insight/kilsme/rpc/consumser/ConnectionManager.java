@@ -9,7 +9,6 @@ import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
 import tech.insight.kilsme.rpc.codec.RequestEncoder;
 import tech.insight.kilsme.rpc.message.Response;
 import tech.insight.kilsme.rpc.register.ServiceMetadata;
-
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -48,7 +47,7 @@ public  class ConnectionManager {
         String key = host + ":" + port;
         // 当缓存中没有连接时，创建新连接并放入表中。
         // 这样同一个 Provider 的后续调用就不用每次重新 connect。
-        ChannelWrapper channelWrapper = channelTable.computeIfAbsent("key", k -> {
+        ChannelWrapper channelWrapper = channelTable.computeIfAbsent(key, k -> {
             try {
                 ChannelFuture channelFuture = bootstrap.connect(host, port).sync();
                 Channel channel = channelFuture.channel();
