@@ -10,9 +10,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * 同节点重试策略：在同一个失败节点上进行有限次数重试。
+ * 同实例重试策略。
  * <p>
- * 使用指数退避 + 随机抖动，降低瞬时高并发下的重试风暴风险。
+ * 调用失败后继续在当前 Provider 实例上重试，
+ * 适用于短暂抖动场景，但对实例级持续故障恢复能力较弱。
  */
 @Slf4j
 public class RetrySame implements RetryPolicy {

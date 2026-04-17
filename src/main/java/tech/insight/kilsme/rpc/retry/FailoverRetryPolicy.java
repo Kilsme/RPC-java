@@ -10,7 +10,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Failover 重试策略：失败后切换到其他 Provider 再调用一次。
+ * Failover 重试策略。
+ * <p>
+ * 某实例调用失败后切换到其他实例继续重试，
+ * 能提升整体成功率，是分布式 RPC 常见重试模型。
  */
 public class FailoverRetryPolicy implements RetryPolicy {
     @Override

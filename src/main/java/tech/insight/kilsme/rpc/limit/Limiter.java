@@ -1,7 +1,10 @@
 package tech.insight.kilsme.rpc.limit;
 
 /**
- * 统一限流器接口。
+ * 限流器统一抽象。
+ * <p>
+ * Provider 或 Consumer 可以按需要实现不同流控算法（令牌桶、并发计数等），
+ * 统一通过 acquire/release 语义接入业务处理链路。
  *
  * <p>Consumer 侧用于保护自身资源与下游 Provider；
  * Provider 侧也可复用相同抽象做入口流量保护。

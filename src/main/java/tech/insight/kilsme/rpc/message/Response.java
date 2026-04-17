@@ -3,9 +3,11 @@ package tech.insight.kilsme.rpc.message;
 import lombok.Data;
 
 /**
- * RPC 响应体：当前仅携带调用结果。
- *
- * <p>Provider 端会把业务执行结果或者错误信息封装成这个对象，再通过 Netty 返回给 Consumer。</p>
+ * RPC 响应体。
+ * <p>
+ * 响应用于回传请求执行结果，通常包含 requestId、返回值、异常信息等。
+ * Consumer 侧通过 requestId 将响应与对应的 in-flight 请求进行匹配并完成 future。
+ * </p>
  */
 @Data
 public class Response {

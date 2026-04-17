@@ -16,9 +16,12 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-@Slf4j
+
 /**
- * 在途请求管理器（In-Flight Request Manager）。
+ * In-Flight 请求管理器。
+ * <p>
+ * 用于维护“requestId -> CompletableFuture<Response>”映射，
+ * 实现异步发送请求后在响应到达时准确唤醒对应调用方。
  *
  * <p>作用：
  * <ul>
@@ -27,8 +30,9 @@ import java.util.concurrent.TimeoutException;
  *     <li>执行双层限流：全局并发限流 + 单 Provider 维度限流。</li>
  * </ul>
  */
+@Slf4j
 public class InFlightRequestManager {
-    private  final Map<ServiceMetadata,Limiter>channelLimiterMap;//每一个hashmap都有自己的limiter进行限流
+    private  final Map<ServiceMetadata, Limiter> channelLimiterMap;//每一个hashmap都有自己的limiter进行限流
     private final Map<Integer, CompletableFuture<Response>> inFlightRequestTable;
     private final HashedWheelTimer timeoutTimer;//定义时间轮
     //创建限流器
@@ -37,7 +41,7 @@ public class InFlightRequestManager {
     public InFlightRequestManager(ConsumerProperties consumerProperties) {
         this.inFlightRequestTable = new ConcurrentHashMap<>();
         this.consumerProperties=consumerProperties;
-        this.timeoutTimer = new HashedWheelTimer(100,TimeUnit.MILLISECONDS,256);
+        this.timeoutTimer = new HashedWheelTimer(100, TimeUnit.MILLISECONDS,256);
         this.globalLimiter =new ConcurrencyLimiter(consumerProperties.getRpcPreSecond());//采用的是并发限流
         this.channelLimiterMap=new ConcurrentHashMap<>();
     }

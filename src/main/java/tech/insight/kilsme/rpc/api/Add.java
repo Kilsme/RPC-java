@@ -1,9 +1,10 @@
 package tech.insight.kilsme.rpc.api;
 
 /**
- * RPC 服务契约：定义一个加法方法。
- *
- * <p>在 RPC 里，接口比实现更重要：Consumer 只认识这个接口，Provider 负责提供对应实现。</p>
+ * 示例 RPC 服务契约（接口）。
+ * <p>
+ * Provider 侧实现该接口并暴露服务，Consumer 侧基于该接口创建动态代理并发起远程调用。
+ * 该接口体现了 RPC 的核心思想：双方只依赖“接口定义”，不直接依赖实现类。
  */
 public interface Add {
     /**

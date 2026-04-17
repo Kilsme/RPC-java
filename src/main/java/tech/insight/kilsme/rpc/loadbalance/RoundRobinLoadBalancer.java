@@ -6,9 +6,10 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 轮询负载均衡：按顺序依次选择 Provider。
+ * 轮询负载均衡实现。
  * <p>
- * 通过原子自增计数器记录调用次数，再对实例数取模得到目标下标。
+ * 通过原子递增计数器在实例列表中顺序选择节点，
+ * 能保证在稳定列表下请求分配相对均匀。
  */
 public class RoundRobinLoadBalancer implements LoadBalancer{
     // 全局递增序号，保证并发下下标计算安全。

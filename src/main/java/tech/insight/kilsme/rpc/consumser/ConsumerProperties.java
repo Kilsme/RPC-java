@@ -1,5 +1,12 @@
 package tech.insight.kilsme.rpc.consumser;
 
+/**
+ * Consumer 端运行配置。
+ * <p>
+ * 包含注册中心地址、超时、重试、负载均衡、熔断等参数，
+ * 由 ConsumerProxyFactory 在调用链中统一读取。
+ */
+
 import lombok.Data;
 import tech.insight.kilsme.rpc.register.RegistryConfig;
 
@@ -30,5 +37,7 @@ public class ConsumerProperties {
     private int rpcPreSecond=5;
     // 单 Provider / 单连接限流：限制对同一个 Provider 的请求压力。
     private int rpcPreChannel=2;
+    private double slowRequestBreakRatio=0.5;
+    private long slowRequestMs=1000;
 
 }

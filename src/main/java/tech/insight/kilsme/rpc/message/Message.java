@@ -1,15 +1,14 @@
 package tech.insight.kilsme.rpc.message;
 
-import lombok.Data;
-
 import java.nio.charset.StandardCharsets;
 
 /**
- * RPC 协议消息基础定义。
- *
- * <p>这个类更像是“协议头”的公共部分，真正的业务数据会放在 `Request` / `Response` 的 body 中。</p>
+ * RPC 传输层通用消息封装。
+ * <p>
+ * 该类通常用于定义消息头/消息类型等基础信息，
+ * 作为 Request 与 Response 的公共抽象，便于编解码器统一处理。
+ * </p>
  */
-@Data
 public class Message {
     // 协议魔数：用于快速识别是否为本 RPC 协议数据。
     // 任何不符合这个魔数的报文，都应该被认为不是当前 RPC 协议。

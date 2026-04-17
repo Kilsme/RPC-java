@@ -7,8 +7,8 @@ import java.util.List;
 /**
  * 负载均衡策略接口。
  * <p>
- * Consumer 在每次发起 RPC 调用前，会先从注册中心获取同一服务名下的多个 Provider 实例，
- * 再通过该接口选择其中一个目标实例进行请求发送。
+ * Consumer 在拿到同一服务的多个 Provider 实例后，
+ * 通过该接口选择“本次请求要路由到哪一个实例”。
  */
 public interface LoadBalancer {
     /**

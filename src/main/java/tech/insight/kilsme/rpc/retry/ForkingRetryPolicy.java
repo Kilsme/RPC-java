@@ -1,5 +1,12 @@
 package tech.insight.kilsme.rpc.retry;
 
+/**
+ * Forking（并行竞速）重试策略。
+ * <p>
+ * 同时并发向多个 Provider 发起调用，谁先成功返回就采用谁，
+ * 以增加低延迟成功概率，但会额外消耗下游资源。
+ */
+
 import tech.insight.kilsme.rpc.exception.RpcException;
 import tech.insight.kilsme.rpc.message.Response;
 import tech.insight.kilsme.rpc.register.ServiceMetadata;

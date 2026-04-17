@@ -1,5 +1,13 @@
 package tech.insight.kilsme.rpc.codec;
 
+/**
+ * 响应编码器。
+ * <p>
+ * 将 Response 对象编码为 RPC 协议字节流，
+ * 由 Provider 写回 Consumer，供客户端完成请求-响应匹配。
+ * </p>
+ */
+
 import com.alibaba.fastjson2.JSONObject;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;

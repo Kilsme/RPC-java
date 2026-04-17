@@ -8,11 +8,11 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.AttributeKey;
 import lombok.extern.slf4j.Slf4j;
 import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
+import tech.insight.kilsme.rpc.codec.ResponseEncoder;
 import tech.insight.kilsme.rpc.limit.ConcurrencyLimiter;
 import tech.insight.kilsme.rpc.limit.Limiter;
 import tech.insight.kilsme.rpc.limit.RateLimiter;
 import tech.insight.kilsme.rpc.message.Request;
-import tech.insight.kilsme.rpc.codec.ResponseEncoder;
 import tech.insight.kilsme.rpc.message.Response;
 import tech.insight.kilsme.rpc.register.DefaultServiceRegister;
 import tech.insight.kilsme.rpc.register.ServiceMetadata;
@@ -20,12 +20,14 @@ import tech.insight.kilsme.rpc.register.ServiceRegistry;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static java.awt.AWTEventMulticaster.add;
-
 /**
- * RPC Provider 服务器：接收 Request，调用本地服务并返回 Response。
- *
- * <p>这是 Provider 端的核心入口类，负责把“本地实现对象”“Netty 网络服务”“注册中心发布”三件事串起来。</p>
+ * Provider 端 Netty 服务器。
+ * <p>
+ * 核心职责：
+ * 1) 启动监听端口并初始化 Netty pipeline（解码、编码、业务处理）；
+ * 2) 启动后将本地已注册服务发布到注册中心；
+ * 3) 收到 Request 后进行限流校验、服务查找、反射调用并回写 Response。
+ * </p>
  */
 @Slf4j
 public class ProviderServer {

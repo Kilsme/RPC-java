@@ -10,9 +10,11 @@ import tech.insight.kilsme.rpc.message.Request;
 import java.nio.charset.StandardCharsets;
 
 /**
- * 请求编码器：把 Request 对象编码为 RPC 协议字节流。
- *
- * <p>Consumer 发出去的每一个 RPC 请求，最终都会被编码成一段标准报文。</p>
+ * 请求编码器。
+ * <p>
+ * 将 Request 对象编码为二进制协议：长度字段 + 魔数 + 消息类型 + JSON body。
+ * 该编码结果会通过 Netty 出站链路发送给 Provider。
+ * </p>
  */
 public class RequestEncoder extends MessageToByteEncoder<Request> {
     @Override

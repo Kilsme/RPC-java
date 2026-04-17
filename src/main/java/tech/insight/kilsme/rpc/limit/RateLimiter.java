@@ -1,17 +1,13 @@
 package tech.insight.kilsme.rpc.limit;
 
-import io.netty.channel.DefaultEventLoop;
-import io.netty.channel.EventLoop;
-import org.checkerframework.checker.units.qual.A;
-
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 速率限流器。
+ * 基于速率的限流器实现。
+ * <p>
+ * 用于限制“单位时间内可通过的请求数量”，
+ * 常用于保护 Provider 避免突发流量压垮服务。
  *
  * <p>通过控制相邻两次放行请求的最小时间间隔，实现平滑限流。
  * 相比简单令牌桶，这里不做排队阻塞，超阈值时直接返回 false。
@@ -19,7 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class RateLimiter implements Limiter {
     private final AtomicLong nextTokens;//在什么时间之前不能拿到请求
     private static final int MAX_TRY_ACQUIRE=512;
-    private static final long MAX_QUEUE_NS=TimeUnit.MILLISECONDS.toNanos(500);
+    private static final long MAX_QUEUE_NS= TimeUnit.MILLISECONDS.toNanos(500);
     private final long  intervalNs;
     /**
      * @param permitsPreSecond 每秒允许通过的请求数

@@ -6,7 +6,11 @@ import tech.insight.kilsme.rpc.register.RegistryConfig;
 import java.util.concurrent.CyclicBarrier;
 
 /**
- * 消费端启动类：演示如何发起一次远程调用。
+ * Consumer 启动入口。
+ * <p>
+ * 通过 ConsumerProxyFactory 创建接口代理，
+ * 再像本地方法一样调用远程服务，演示 RPC 调用链路。
+ * </p>
  *
  * <p>这个类的重点不是业务逻辑，而是演示 Consumer 如何通过动态代理调用远程接口。</p>
  */

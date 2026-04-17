@@ -7,7 +7,11 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 服务注册中心：维护“接口名 -> 服务实例包装器”的映射。
+ * Provider 本地服务注册表。
+ * <p>
+ * 维护“服务名 -> 本地调用器(invocation)”映射，
+ * ProviderServer 收到请求后会从该表中查找并反射执行目标方法。
+ * </p>
  *
  * <p>注意这里的“注册中心”是 Provider 本地内存里的注册表，不是 Zookeeper。
  * 它的作用是：Provider 收到请求后，能够根据接口名快速找到对应实现并反射执行。</p>

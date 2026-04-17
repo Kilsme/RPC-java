@@ -4,7 +4,13 @@ import tech.insight.kilsme.rpc.api.Add;
 import tech.insight.kilsme.rpc.register.RegistryConfig;
 
 /**
- * 服务端启动类：注册服务并监听端口。
+ * Provider 启动入口。
+ * <p>
+ * 启动顺序通常是：
+ * 1) 构造并注册本地服务实现；
+ * 2) 启动 Netty 服务端；
+ * 3) 将服务元数据注册到注册中心（如 Zookeeper）。
+ * </p>
  *
  * <p>这是 Provider 进程的启动入口，负责把本地实现对象暴露出去，并发布到注册中心。</p>
  */

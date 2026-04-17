@@ -9,15 +9,16 @@ import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
 import tech.insight.kilsme.rpc.codec.RequestEncoder;
 import tech.insight.kilsme.rpc.message.Response;
 import tech.insight.kilsme.rpc.register.ServiceMetadata;
+
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 
 /**
- * Consumer 连接管理器：按 host:port 缓存并复用 Netty Channel。
- *
- * <p>它的主要作用不是“发请求”，而是负责“把请求发出去之前，先找到一条可用的 TCP 连接”。
- * 当同一个 Provider 被重复调用时，直接复用已有连接可以减少频繁建连的开销。</p>
+ * Consumer 连接管理器。
+ * <p>
+ * 负责按 Provider 维度复用 Netty Channel，避免每次请求都重新建连，
+ * 并在连接断开时清理缓存、触发重连或失败处理。
+ * </p>
  */
 @Slf4j
 public  class ConnectionManager {

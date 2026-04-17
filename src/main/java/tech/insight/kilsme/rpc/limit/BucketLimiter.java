@@ -1,5 +1,12 @@
 package tech.insight.kilsme.rpc.limit;
 
+/**
+ * 令牌桶限流实现。
+ * <p>
+ * 通过周期性补充令牌控制平均流量，
+ * 允许在令牌充足时承受一定突发请求。
+ */
+
 import io.netty.channel.DefaultEventLoop;
 import io.netty.channel.EventLoop;
 

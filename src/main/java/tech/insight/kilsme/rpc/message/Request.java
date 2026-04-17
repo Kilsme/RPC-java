@@ -5,15 +5,17 @@ import lombok.Data;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * RPC 请求体：描述调用哪个服务、哪个方法以及入参。
- *
- * <p>它本质上是“把一次本地方法调用打包成网络请求”的结果。</p>
+ * RPC 请求体。
+ * <p>
+ * 请求中包含服务名、方法名、参数类型、参数值等调用元信息。
+ * Provider 在收到请求后，会根据这些字段完成反射定位并执行目标方法。
+ * </p>
  */
 @Data
 public class Request {
     // 进程内自增请求号，用于请求-响应匹配。
     // Consumer 端会把它作为 in-flight 表的 key，Provider 回包时也会带回来。
-    private static final AtomicInteger   REQUEST_COUNTER=new AtomicInteger();
+    private static final AtomicInteger REQUEST_COUNTER=new AtomicInteger();
     // 每个请求创建时分配一个 requestId。
     private int requestId=REQUEST_COUNTER.getAndIncrement();
     // 目标服务名（示例中仅作演示）。

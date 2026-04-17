@@ -3,9 +3,10 @@ package tech.insight.kilsme.rpc.limit;
 import java.util.concurrent.Semaphore;
 
 /**
- * 并发限流器（基于 Semaphore）。
- *
- * <p>限制“同一时刻同时进行中的请求数”，适合控制系统资源上限。
+ * 并发数限流实现。
+ * <p>
+ * 通过计数当前在处理中的请求数量来限制并发，
+ * 适合保护线程池、数据库连接池等“并发敏感资源”。
  */
 public class ConcurrencyLimiter implements Limiter{
      private final Semaphore semaphore;

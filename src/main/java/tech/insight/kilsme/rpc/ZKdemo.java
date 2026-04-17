@@ -10,7 +10,10 @@ import org.apache.curator.x.discovery.ServiceInstance;
 import org.apache.curator.x.discovery.details.JsonInstanceSerializer;
 
 /**
- * Curator + Zookeeper 最小示例：演示如何注册一个服务实例。
+ * Zookeeper 交互演示类。
+ * <p>
+ * 用于独立验证注册中心（节点创建、查询、监听等）是否工作正常，
+ * 帮助排查“服务注册不到 ZK”或“消费者发现不到服务”等问题。
  */
 public class ZKdemo {
     public static void main(String[] args) throws Exception {

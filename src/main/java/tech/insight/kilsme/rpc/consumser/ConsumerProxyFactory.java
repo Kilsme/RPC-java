@@ -1,15 +1,10 @@
 package tech.insight.kilsme.rpc.consumser;
 
-import io.netty.bootstrap.Bootstrap;
-import io.netty.channel.*;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.channel.Channel;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
-import org.checkerframework.checker.nullness.qual.NonNull;
 import tech.insight.kilsme.rpc.breaker.CircuitBreaker;
 import tech.insight.kilsme.rpc.breaker.CircuitBreakerManager;
-import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
-import tech.insight.kilsme.rpc.codec.RequestEncoder;
 import tech.insight.kilsme.rpc.exception.RpcException;
 import tech.insight.kilsme.rpc.loadbalance.LoadBalancer;
 import tech.insight.kilsme.rpc.loadbalance.RandomLoadBalancer;
@@ -27,18 +22,19 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Consumer 动态代理工厂。
- *
- * <p>核心职责：
- * <ul>
- *     <li>为业务接口创建 JDK 动态代理，把本地方法调用转成 RPC 请求。</li>
- *     <li>从注册中心拉取可用 Provider 列表，并通过负载均衡选择目标节点。</li>
- *     <li>通过 Netty 发送请求并异步接收响应，再用 Future 同步返回给调用方。</li>
- *     <li>在失败场景下按配置执行重试策略（同机重试/故障转移/并发竞速）。</li>
- * </ul>
+ * <p>
+ * 核心职责：
+ * 1) 拦截接口方法调用并构造 Request；
+ * 2) 从注册中心发现服务并负载均衡选址；
+ * 3) 通过 ConnectionManager 发送请求；
+ * 4) 等待响应并执行超时/重试/熔断逻辑。
  */
 @Slf4j
 public class ConsumerProxyFactory {

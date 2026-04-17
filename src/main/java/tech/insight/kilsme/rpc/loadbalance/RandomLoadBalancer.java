@@ -6,9 +6,10 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * 随机负载均衡：每次调用时随机选择一个 Provider。
+ * 随机负载均衡实现。
  * <p>
- * 适合节点性能接近、请求量较大的场景，能在统计意义上实现较均匀分布。
+ * 每次调用从可用实例列表中随机选择一个节点，
+ * 实现简单、分布较均匀，但短时间窗口内可能出现抖动或偏斜。
  */
 public class RandomLoadBalancer implements LoadBalancer{
     // 线程安全随机数生成器（Random 在此场景足够使用）。

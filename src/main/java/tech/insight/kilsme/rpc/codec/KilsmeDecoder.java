@@ -1,4 +1,5 @@
 package tech.insight.kilsme.rpc.codec;
+
 import com.alibaba.fastjson2.JSONObject;
 import com.alibaba.fastjson2.JSONReader;
 import io.netty.buffer.ByteBuf;
@@ -8,12 +9,16 @@ import tech.insight.kilsme.rpc.message.Message;
 import tech.insight.kilsme.rpc.message.Request;
 import tech.insight.kilsme.rpc.message.Response;
 
-import java.util.Arrays;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * 协议解码器：把字节流反序列化为 Request/Response。
+ * RPC 协议解码器。
+ * <p>
+ * 负责把网络字节流解码为 Message/Request/Response 对象，
+ * 是 Netty 入站链路中“字节 -> 业务对象”的关键环节。
+ * </p>
  *
  * <p>它负责把网络中的二进制数据还原成 Java 对象，是 RPC 协议进入业务逻辑前的第一道关卡。</p>
  */
@@ -89,4 +94,3 @@ public class KilsmeDecoder extends LengthFieldBasedFrameDecoder {
 
 
 }
-

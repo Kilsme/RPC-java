@@ -1,5 +1,11 @@
 package tech.insight.kilsme.rpc.metrices;
 
+/**
+ * 单次 RPC 调用指标。
+ * <p>
+ * 记录一次调用是否成功、耗时、异常等数据，
+ * 供熔断器或监控模块进行统计判断。
+ */
 import lombok.Data;
 import tech.insight.kilsme.rpc.register.ServiceMetadata;
 

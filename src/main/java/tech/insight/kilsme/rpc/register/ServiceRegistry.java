@@ -3,10 +3,11 @@ package tech.insight.kilsme.rpc.register;
 import java.util.List;
 
 /**
- * 注册中心抽象：统一 Provider 注册与 Consumer 发现能力。
- *
- * <p>这个接口把“服务注册”和“服务发现”统一起来，
- * 上层代码不需要关心具体用的是 Zookeeper、Redis，还是其他注册中心实现。</p>
+ * 服务注册/发现接口。
+ * <p>
+ * 抽象 Provider 侧注册与 Consumer 侧发现能力，
+ * 便于后续替换不同实现（Zookeeper、Redis、本地内存等）。
+ * </p>
  */
 public interface ServiceRegistry {
     /**
@@ -22,7 +23,7 @@ public interface ServiceRegistry {
     /**
      * Consumer 按服务名查询可用 Provider 列表。
      */
-    List<ServiceMetadata>fetchServiceList(String service) throws Exception;
+    List<ServiceMetadata> fetchServiceList(String service) throws Exception;
 
 
 

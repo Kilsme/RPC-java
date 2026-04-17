@@ -10,7 +10,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
 /**
- * 重试上下文：封装一次重试决策所需的全部输入参数。
+ * 重试上下文。
+ * <p>
+ * 保存一次调用在重试过程中的状态信息（已重试次数、最后异常等），
+ * 供 RetryPolicy 在每次判定时使用。
+ * </p>
+ *
+ * @see RetryPolicy
  */
 @Data
 public class RetryContext {

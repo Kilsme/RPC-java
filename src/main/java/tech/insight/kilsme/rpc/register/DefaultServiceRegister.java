@@ -8,10 +8,10 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 注册中心门面：对外提供统一接口，内部按配置委托到具体实现。
- *
- * <p>调用方只依赖这个类，不需要知道底层是 Zookeeper 还是 Redis。
- * 它还带有一个简单的本地缓存，用于注册中心临时不可用时的降级查询。</p>
+ * 注册中心默认实现选择器（简单工厂）。
+ * <p>
+ * 根据配置返回对应 ServiceRegistry 实例，
+ * 目前支持 zookeeper，redis 预留扩展。
  */
 @Slf4j
 public class DefaultServiceRegister implements ServiceRegistry {

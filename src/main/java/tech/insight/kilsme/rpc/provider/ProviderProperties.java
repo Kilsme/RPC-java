@@ -4,9 +4,11 @@ import lombok.Data;
 import tech.insight.kilsme.rpc.register.RegistryConfig;
 
 /**
- * Provider 端配置对象。
- *
- * <p>Provider 启动、监听端口、限流和注册中心发布时，都依赖这里的配置。</p>
+ * Provider 端运行配置。
+ * <p>
+ * 包含监听端口、限流开关、注册中心配置等，
+ * 由 ProviderApp 在启动时加载并传入 ProviderServer。
+ * </p>
  */
 @Data
 public class ProviderProperties {
@@ -22,4 +24,52 @@ public class ProviderProperties {
     private int preConsumerMaxRequest=5;
     // Netty worker 线程数：处理 IO 和业务的工作线程数量。
     private int workThreadNum=4;
+
+    public String getHost() {
+        return host;
+    }
+
+    public void setHost(String host) {
+        this.host = host;
+    }
+
+    public int getPort() {
+        return port;
+    }
+
+    public void setPort(int port) {
+        this.port = port;
+    }
+
+    public RegistryConfig getRegistryConfig() {
+        return registryConfig;
+    }
+
+    public void setRegistryConfig(RegistryConfig registryConfig) {
+        this.registryConfig = registryConfig;
+    }
+
+    public int getGlobalMaxRequest() {
+        return globalMaxRequest;
+    }
+
+    public void setGlobalMaxRequest(int globalMaxRequest) {
+        this.globalMaxRequest = globalMaxRequest;
+    }
+
+    public int getPreConsumerMaxRequest() {
+        return preConsumerMaxRequest;
+    }
+
+    public void setPreConsumerMaxRequest(int preConsumerMaxRequest) {
+        this.preConsumerMaxRequest = preConsumerMaxRequest;
+    }
+
+    public int getWorkThreadNum() {
+        return workThreadNum;
+    }
+
+    public void setWorkThreadNum(int workThreadNum) {
+        this.workThreadNum = workThreadNum;
+    }
 }

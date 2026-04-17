@@ -1,4 +1,5 @@
 package tech.insight.kilsme.rpc.register;
+
 import lombok.extern.slf4j.Slf4j;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
@@ -11,10 +12,10 @@ import org.apache.curator.x.discovery.details.JsonInstanceSerializer;
 import java.util.List;
 
 /**
- * 基于 Curator ServiceDiscovery 的 Zookeeper 注册中心实现。
- *
- * <p>Provider 启动后会把自己的 `ServiceMetadata` 包装成 `ServiceInstance` 注册进 Zookeeper，
- * Consumer 则通过服务名查询到所有实例，再从中挑选一个可用节点。</p>
+ * 基于 Zookeeper 的服务注册中心实现。
+ * <p>
+ * Provider 侧将服务节点写入 ZK；Consumer 侧按服务名查询实例列表。
+ * 节点通常使用临时节点，Provider 下线后可自动剔除。
  */
 @Slf4j
 public class ZookeeperServiceRegister implements ServiceRegistry {

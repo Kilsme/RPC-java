@@ -3,7 +3,10 @@ package tech.insight.kilsme.rpc.register;
 import lombok.Data;
 
 /**
- * 服务实例元数据：注册中心中一条服务节点记录。
+ * 服务实例元数据。
+ * <p>
+ * 描述一个可调用的 Provider 实例（服务名、地址、端口、分组等），
+ * 是注册中心存储与消费者路由选择的基础数据结构。
  */
 @Data
 public class ServiceMetadata {
