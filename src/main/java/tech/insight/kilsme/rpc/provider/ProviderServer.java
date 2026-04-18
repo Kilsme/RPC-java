@@ -8,6 +8,7 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.AttributeKey;
 import lombok.extern.slf4j.Slf4j;
 import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
+import tech.insight.kilsme.rpc.codec.KilsmeEncoder;
 import tech.insight.kilsme.rpc.codec.ResponseEncoder;
 import tech.insight.kilsme.rpc.limit.ConcurrencyLimiter;
 import tech.insight.kilsme.rpc.limit.Limiter;
@@ -17,7 +18,10 @@ import tech.insight.kilsme.rpc.message.Response;
 import tech.insight.kilsme.rpc.register.DefaultServiceRegister;
 import tech.insight.kilsme.rpc.register.ServiceMetadata;
 import tech.insight.kilsme.rpc.register.ServiceRegistry;
+import tech.insight.kilsme.rpc.serialize.Serializer;
+import tech.insight.kilsme.rpc.serialize.SerializerManager;
 
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -39,12 +43,14 @@ public class ProviderServer {
     private final ServiceRegistry serviceRegister;
     private final ProviderProperties providerProperties;
     private final Limiter globallLimiter;
+    private final SerializerManager serializerManager;
 
     public ProviderServer(ProviderProperties providerProperties) {
         this.providerProperties = providerProperties;
         this.serviceRegister = new DefaultServiceRegister();
         this.registry = new ProviderRegistry();
         this.globallLimiter = new ConcurrencyLimiter(providerProperties.getGlobalMaxRequest());
+        this.serializerManager=new SerializerManager();
     }
 
     /**
@@ -210,6 +216,10 @@ public class ProviderServer {
         @Override
         public void channelActive(ChannelHandlerContext ctx) throws Exception {
             log.info("地址：{}连接了", ctx.channel().remoteAddress());
+            Serializer.SerializerType serializerType = Serializer.SerializerType.valueOf(providerProperties.getSerialize().toUpperCase(Locale.ROOT));
+            ctx.channel().attr(KilsmeEncoder.SERIALIZE_KEY).set(serializerType.getTypeCode());
+            ctx.channel().attr(KilsmeEncoder.SERIALIZE_MANGER_KEY).set(serializerManager);
+            ctx.fireChannelActive();
         }
 
         @Override
@@ -222,6 +232,7 @@ public class ProviderServer {
         @Override
         public void channelInactive(ChannelHandlerContext ctx) throws Exception {
             log.info("地址：{}断开了", ctx.channel().remoteAddress());
+            ctx.fireChannelInactive();
         }
     }
 

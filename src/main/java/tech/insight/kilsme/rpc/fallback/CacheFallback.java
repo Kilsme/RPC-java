@@ -1,15 +1,17 @@
 package tech.insight.kilsme.rpc.fallback;
 
 import lombok.Data;
+import org.checkerframework.checker.units.qual.C;
 import tech.insight.kilsme.rpc.exception.RpcException;
 import tech.insight.kilsme.rpc.metrices.RpcCallMetrics;
 
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class CacheFallback implements Fallback{
     private static final Object NULL_OBJECT=new Object();
-    private final Map<InvokeKey,Object> cache=new HashMap<>();
+    private final Map<InvokeKey,Object> cache=new ConcurrentHashMap<>();
     @Override
     public Object fallback(RpcCallMetrics metrics) {
         InvokeKey invokeKey = new InvokeKey(metrics.getMethod(), metrics.getParams());

@@ -31,6 +31,8 @@ public class ConsumerProperties {
     private String  loadBalancePolicy="robin";
     // 重试策略：retrySame/failover/forking。
     private String  retryPolicy="forking";
+    private String serialize="json";//序列化算法
+    private String compress="";//压缩算法
     // 注册中心配置（类型、地址等）。
     private RegistryConfig registryConfig=new RegistryConfig();
     // Consumer 全局并发限流：最多允许多少个 RPC 在“在途”状态。

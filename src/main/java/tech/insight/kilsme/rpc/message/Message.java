@@ -1,6 +1,8 @@
 package tech.insight.kilsme.rpc.message;
 
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * RPC 传输层通用消息封装。
@@ -21,21 +23,43 @@ public class Message {
     // 消息体，当前使用 JSON 字节数组。
     // 这里没有直接写 Java 对象，而是先转成字节数组，方便网络传输和跨语言扩展。
     private byte[]body;
+    private short version;
+    private byte serializeAndCompress;//序列化和压缩算法方式
     // 消息类型码：请求与响应在同一条 TCP 连接中通过 type 区分。
     public enum MessageType{
         // Consumer 发往 Provider 的调用请求。
-        REQUEST(1),
+        REQUEST(1,Request.class),
         // Provider 返回给 Consumer 的调用结果。
-        RESPONSE(2);
-
+        RESPONSE(2,Response.class);
+        private static final Map<Class<?>,MessageType>CLASS_CACHE=new HashMap<>();
         private final byte code;
-        MessageType(int code){
+        private final Class<?>messageClass;
+        static{
+            for(MessageType value:values()){
+                if (CLASS_CACHE.put(value.messageClass,value)!=null) {
+                    try {
+                        throw new IllegalAccessException("vale没有对应的类型");
+                    } catch (IllegalAccessException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            }
+        }
+        MessageType(int code,Class<?>messageClass){
             this.code=(byte) code;
+            this.messageClass=messageClass;
         }
 
         // 返回协议里实际写入的类型码。
         public byte getCode(){
             return code;
+        }
+
+        public Class<?> getMessageClass() {
+            return messageClass;
+        }
+        public static MessageType ofClass(Class<?>messageClass){
+            return CLASS_CACHE.get(messageClass);
         }
     }
 }

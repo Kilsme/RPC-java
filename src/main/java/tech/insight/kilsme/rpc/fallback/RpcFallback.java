@@ -8,6 +8,5 @@ import java.lang.annotation.Target;
 @Retention(java.lang.annotation.RetentionPolicy.RUNTIME)//运行时保留，可以通过反射获取
 public @interface RpcFallback {
    Class<?> value();
-
 }
 

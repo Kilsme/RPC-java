@@ -6,10 +6,14 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import lombok.extern.slf4j.Slf4j;
 import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
+import tech.insight.kilsme.rpc.codec.KilsmeEncoder;
 import tech.insight.kilsme.rpc.codec.RequestEncoder;
 import tech.insight.kilsme.rpc.message.Response;
 import tech.insight.kilsme.rpc.register.ServiceMetadata;
+import tech.insight.kilsme.rpc.serialize.Serializer;
+import tech.insight.kilsme.rpc.serialize.SerializerManager;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -28,11 +32,14 @@ public  class ConnectionManager {
     private final Bootstrap bootstrap;
     InFlightRequestManager inFlightRequestManager;
     private final ConsumerProperties consumerProperties;
+    private final SerializerManager serializerManager;
     // 注入统一 Bootstrap，保证连接参数一致。
-    public ConnectionManager(InFlightRequestManager inFlightRequestManager, ConsumerProperties consumerProperties) {
+    public ConnectionManager(InFlightRequestManager inFlightRequestManager,
+                             ConsumerProperties consumerProperties) {
         this.inFlightRequestManager=inFlightRequestManager;
         this.consumerProperties=consumerProperties;
         this.bootstrap = crateBootstrap(consumerProperties);
+        this.serializerManager =new SerializerManager();
     }
 
     /**
@@ -115,6 +122,11 @@ public  class ConnectionManager {
         @Override
         public void channelActive(ChannelHandlerContext ctx) throws Exception {
             log.info("地址：{}连接了", ctx.channel().remoteAddress());
+            Serializer.SerializerType serializerType = Serializer.SerializerType.valueOf(consumerProperties.getSerialize().toUpperCase(Locale.ROOT));
+            ctx.channel().attr(KilsmeEncoder.SERIALIZE_KEY).set(serializerType.getTypeCode());
+            ctx.channel().attr(KilsmeEncoder.SERIALIZE_MANGER_KEY).set(serializerManager);
+            ctx.fireChannelActive();
+
         }
 
         @Override
@@ -127,6 +139,7 @@ public  class ConnectionManager {
         @Override
         public void channelInactive(ChannelHandlerContext ctx) throws Exception {
             log.info("地址：{}断开了", ctx.channel().remoteAddress());
+            ctx.fireChannelInactive();
         }
 
     }

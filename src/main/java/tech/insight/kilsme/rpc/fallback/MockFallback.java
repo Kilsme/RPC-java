@@ -13,7 +13,7 @@ public class MockFallback implements  Fallback{
     @Override
     public Object fallback(RpcCallMetrics metrics) throws InvocationTargetException, IllegalAccessException {
         Method method = metrics.getMethod();
-        RpcFallback annotation = method.getDeclaringClass().getAnnotation(RpcFallback.class);
+        RpcFallback annotation = method.getDeclaringClass().getAnnotation(RpcFallback.class);//通过类去查看有没有添加rpcfallback注解
         if(annotation==null){
             throw new RpcException("没招了，降级还不行");
         }
@@ -22,9 +22,7 @@ public class MockFallback implements  Fallback{
             throw new RpcException("降级类不合法");
         }
         Object mockobject = mockObjects.computeIfAbsent(methodClass, this::createMockObject);
-        return method.invoke(mockobject,metrics.getParams());
-
-
+        return method.invoke(mockobject,metrics.getParams());//传递了具体的值
     }
     private Object createMockObject(Class<?>methodClass){
       try {
