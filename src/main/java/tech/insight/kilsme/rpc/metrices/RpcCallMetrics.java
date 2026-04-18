@@ -7,6 +7,7 @@ package tech.insight.kilsme.rpc.metrices;
  * 供熔断器或监控模块进行统计判断。
  */
 import lombok.Data;
+import tech.insight.kilsme.rpc.message.Response;
 import tech.insight.kilsme.rpc.register.ServiceMetadata;
 
 import java.lang.reflect.Method;
@@ -23,6 +24,7 @@ public class RpcCallMetrics {
     private ServiceMetadata serviceMetadata;
     private Object[]params;
     private Method method;
+    private Object result;
     private RpcCallMetrics(){
 
     }
@@ -35,10 +37,12 @@ public class RpcCallMetrics {
         metrics.serviceMetadata=provider;
         return metrics;
     }
-    public void complete(){
+    public void complete(Response response){
     this.complete=true;
+    this.result=response.getRes();
     this.duration=System.currentTimeMillis()-startTime;
     }
+
     public void errorComplete(Throwable throwable){
         this.throwable=throwable;
         this.duration=System.currentTimeMillis()-startTime;

@@ -6,6 +6,10 @@ import lombok.extern.slf4j.Slf4j;
 import tech.insight.kilsme.rpc.breaker.CircuitBreaker;
 import tech.insight.kilsme.rpc.breaker.CircuitBreakerManager;
 import tech.insight.kilsme.rpc.exception.RpcException;
+import tech.insight.kilsme.rpc.fallback.CacheFallback;
+import tech.insight.kilsme.rpc.fallback.DefaultFallback;
+import tech.insight.kilsme.rpc.fallback.Fallback;
+import tech.insight.kilsme.rpc.fallback.MockFallback;
 import tech.insight.kilsme.rpc.loadbalance.LoadBalancer;
 import tech.insight.kilsme.rpc.loadbalance.RandomLoadBalancer;
 import tech.insight.kilsme.rpc.loadbalance.RoundRobinLoadBalancer;
@@ -45,6 +49,7 @@ public class ConsumerProxyFactory {
     private final ConsumerProperties consumerProperties;
     private final InFlightRequestManager inFlightRequestManager;
     private final CircuitBreakerManager circuitBreakerManager;
+    private Fallback fallback;
 
     /**
      * 初始化消费端基础组件。
@@ -67,6 +72,7 @@ public class ConsumerProxyFactory {
         this.registry.init(consumerProperties.getRegistryConfig());
         this.manager = new ConnectionManager(inFlightRequestManager, consumerProperties);
         this.consumerProperties = consumerProperties;
+        this.fallback = new DefaultFallback(new CacheFallback(), new MockFallback());
     }
 
     /**
@@ -159,7 +165,6 @@ public class ConsumerProxyFactory {
             // 下面这些注释是对“注册中心角色”的理解提示：
             // consumer -> center -> provider，consumer 不直接访问 provider 本地对象，
             // 只能通过注册中心发现服务地址；而注册中心通常还会承担通知、临时节点、心跳等职责。
-
             // 1) 从注册中心查可用 Provider 列表。
             List<ServiceMetadata> serviceMetadata = new ArrayList<>(registry.fetchServiceList(interfaceClass.getName()));//进行包装保证可以进行操作
             // 2) 选择一个 Provider 并复用/创建连接。
@@ -168,23 +173,33 @@ public class ConsumerProxyFactory {
             Request request = buildRequest(method, args);
             // 同步等待异步结果返回。
             // 这里先发起异步调用，再通过 Future.get() 阻塞等待结果，形成“异步发送、同步拿结果”的效果。
-            Response response;
-            RpcCallMetrics rpcCallMetrics = RpcCallMetrics.createRpcCallMetrics(method,args,provider);
+            RpcCallMetrics rpcCallMetrics = RpcCallMetrics.createRpcCallMetrics(method, args, provider);
             CircuitBreaker breaker = circuitBreakerManager.createOrGetBreaker(provider);
+            if (provider == null) {
+                //进行降级处理
+                return fallback.fallback(rpcCallMetrics);
+            }
             try {
                 CompletableFuture<Response> requestFuture = callRpcAsync(request, provider);
-                response = requestFuture.get(consumerProperties.getRequestTimeoutMs(), TimeUnit.MILLISECONDS);
-                rpcCallMetrics.complete();
+                Response response = requestFuture.get(consumerProperties.getRequestTimeoutMs(), TimeUnit.MILLISECONDS);
+                rpcCallMetrics.complete(response);
                 breaker.recordRpc(rpcCallMetrics);
-
+                fallback.recordMetrics(rpcCallMetrics);
+                return processResponse(response);
             } catch (Exception e) {
                 //进行重试
-                breaker.recordRpc(rpcCallMetrics);
                 rpcCallMetrics.errorComplete(e);
-                response = doRetry(rpcCallMetrics,serviceMetadata);
+                breaker.recordRpc(rpcCallMetrics);
+                //如果重试还是抛出异常，进行降级
+            }
+            try {
+                return processResponse(doRetry(rpcCallMetrics, serviceMetadata));
+            } catch (Exception e) {
+                //进行降级
+                return fallback.fallback(rpcCallMetrics);
 
             }
-            return processResponse(response);
+
 
         }
 
@@ -198,7 +213,7 @@ public class ConsumerProxyFactory {
                     candidate.remove(select);
                 }
             }
-            throw new RpcException("当前没有可以提供的provider");
+            return null;//进行判断返回值是不是null来进行判断
         }
 
         /**
@@ -211,7 +226,7 @@ public class ConsumerProxyFactory {
          *     <li>方法总超时必须被严格控制，不能因为重试把一个调用拖得无限久。</li>
          * </ul>
          */
-        private Response doRetry(RpcCallMetrics rpcCallMetrics,List<ServiceMetadata> serviceMetadata) throws Exception {
+        private Response doRetry(RpcCallMetrics rpcCallMetrics, List<ServiceMetadata> serviceMetadata) throws Exception {
             Throwable e = rpcCallMetrics.getThrowable();
             if (e instanceof ExecutionException ee && ee.getCause() instanceof RpcException rpcException && !rpcException.retry()) {
                 throw rpcException;
@@ -249,9 +264,9 @@ retryContext.setDorpcFunction(new Function<ServiceMetadata, CompletableFuture<Re
             retryContext.setMethodTimeoutMs(methodTime);
             retryContext.setLoadBalancer(this.loadBalancer);
             retryContext.setRequestTimeoutMs(consumerProperties.getRequestTimeoutMs());
-            retryContext.setDorpcFunction(provider ->{
+            retryContext.setDorpcFunction(provider -> {
                 CircuitBreaker breaker = circuitBreakerManager.createOrGetBreaker(provider);
-                if(!breaker.allowRequest()){
+                if (!breaker.allowRequest()) {
                     //失败
                     CompletableFuture<Response> breakFuture = new CompletableFuture<>();
                     breakFuture.completeExceptionally(new RpcException("provider熔断了"));
@@ -259,15 +274,15 @@ retryContext.setDorpcFunction(new Function<ServiceMetadata, CompletableFuture<Re
                 }
                 RpcCallMetrics retryMetrics = RpcCallMetrics.createRpcCallMetrics(rpcCallMetrics.getMethod(), rpcCallMetrics.getParams(), provider);
                 CompletableFuture<Response> requestFuture = callRpcAsync(buildRequest(rpcCallMetrics.getMethod(), rpcCallMetrics.getParams()), provider);
-               requestFuture.whenComplete((r,RetryE)->{
-                   if(RetryE==null){
-                       retryMetrics.complete();
-                   }else{
-                       retryMetrics.errorComplete(RetryE);
-                   }
-                   breaker.recordRpc(retryMetrics);
-               });
-               return requestFuture;
+                requestFuture.whenComplete((r, RetryE) -> {
+                    if (RetryE == null) {
+                        retryMetrics.complete(r);
+                    } else {
+                        retryMetrics.errorComplete(RetryE);
+                    }
+                    breaker.recordRpc(retryMetrics);
+                });
+                return requestFuture;
             });
             return retryContext;
         }//TODO 重点 做笔记

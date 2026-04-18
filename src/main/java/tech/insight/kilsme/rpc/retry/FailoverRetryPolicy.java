@@ -30,6 +30,5 @@ public class FailoverRetryPolicy implements RetryPolicy {
         CompletableFuture<Response> future = retryContext.doRpc(failoverService);
         // 受请求超时与方法总超时共同约束。
         return future.get(Math.min(retryContext.getRequestTimeoutMs(), retryContext.getMethodTimeoutMs()), TimeUnit.MILLISECONDS);
-
     }
 }

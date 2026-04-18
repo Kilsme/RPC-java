@@ -12,6 +12,10 @@ public class RpcException extends RuntimeException {
         super(message);
     }
 
+    public RpcException(String message,Throwable throwable) {
+        super(message,throwable);
+    }
+
     /**
      * 是否允许重试。
      *
