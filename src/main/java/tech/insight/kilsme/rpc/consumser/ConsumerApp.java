@@ -1,8 +1,10 @@
 package tech.insight.kilsme.rpc.consumser;
 
 import tech.insight.kilsme.rpc.api.Add;
+import tech.insight.kilsme.rpc.api.User;
 import tech.insight.kilsme.rpc.register.RegistryConfig;
 
+import java.util.HashMap;
 import java.util.concurrent.CyclicBarrier;
 
 /**
@@ -29,17 +31,20 @@ public class ConsumerApp {
         // 重复调用用于观察连接复用、请求发送和响应回包日志。
         // 这里用 10 个线程同时发起调用，是为了更容易观察限流、并发和回包匹配过程。
         Add addConsumerProxy = proxyFactory.createConsumerProxy(Add.class);
-        CyclicBarrier cyclicBarrier = new CyclicBarrier(10);
-        for(int i=0;i<10;i++){
-            new Thread(() -> {
-                try {
-                    cyclicBarrier.await();
-                    System.out.println(addConsumerProxy.add(1, 2));
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }).start();
-        }
+        GenericConsumer genericConsumer=proxyFactory.createConsumerProxy(GenericConsumer.class);
+        System.out.println(genericConsumer.$invoke(Add.class.getName(), "add",
+                new String[]{"int", "int"}, new Object[]{1, 2}));
+
+        //aaa rpc+auth ===>gateway-->provider 进行泛化调用
+        HashMap<String, Object> user1 = new HashMap<>();
+        user1.put("age",1);
+        user1.put("name","consumer创建");
+        HashMap<String, Object> user2 = new HashMap<>();
+        user2.put("age",2);
+        user2.put("name","consumer创建");
+        System.out.println(genericConsumer.$invoke(Add.class.getName(), "mergeAge",
+                new String[]{User.class.getName(), User.class.getName()},
+                new Object[]{user1, user2}));
 
     }
 }

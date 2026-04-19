@@ -50,7 +50,7 @@ public class ConsumerProxyFactory {
     private final InFlightRequestManager inFlightRequestManager;
     private final CircuitBreakerManager circuitBreakerManager;
     private Fallback fallback;
-    private final  RetryPolicyManager retryPolicyManager;
+    private final RetryPolicyManager retryPolicyManager;
 
     /**
      * 初始化消费端基础组件。
@@ -74,7 +74,7 @@ public class ConsumerProxyFactory {
         this.manager = new ConnectionManager(inFlightRequestManager, consumerProperties);
         this.consumerProperties = consumerProperties;
         this.fallback = new DefaultFallback(new CacheFallback(), new MockFallback());
-        this.retryPolicyManager=new RetryPolicyManager();
+        this.retryPolicyManager = new RetryPolicyManager();
     }
 
     /**
@@ -98,7 +98,7 @@ public class ConsumerProxyFactory {
      */
     private RetryPolicy createRetryPolicy(String name) {
         RetryPolicy retryPolicy = retryPolicyManager.getRetryPolicy(name);
-        if(retryPolicy==null){
+        if (retryPolicy == null) {
             throw new IllegalArgumentException("没有或者重试策略" + name);
         }
         return retryPolicy;
@@ -162,11 +162,13 @@ public class ConsumerProxyFactory {
                 }
                 throw new UnsupportedOperationException("代理对象不支持这个函数");
             }
+            boolean genericInvoke = method.getName().equals("$invoke");
+            String serviceName = genericInvoke ? args[0].toString() : interfaceClass.getName();
             // 下面这些注释是对“注册中心角色”的理解提示：
             // consumer -> center -> provider，consumer 不直接访问 provider 本地对象，
             // 只能通过注册中心发现服务地址；而注册中心通常还会承担通知、临时节点、心跳等职责。
             // 1) 从注册中心查可用 Provider 列表。
-            List<ServiceMetadata> serviceMetadata = new ArrayList<>(registry.fetchServiceList(interfaceClass.getName()));//进行包装保证可以进行操作
+            List<ServiceMetadata> serviceMetadata = new ArrayList<>(registry.fetchServiceList(serviceName));//进行包装保证可以进行操作
             // 2) 选择一个 Provider 并复用/创建连接。
             // 使用负载均衡策略从多个实例中挑一个目标节点。
             ServiceMetadata provider = decideProvider(serviceMetadata);
@@ -285,7 +287,7 @@ retryContext.setDorpcFunction(new Function<ServiceMetadata, CompletableFuture<Re
                 return requestFuture;
             });
             return retryContext;
-        }//TODO 重点 做笔记
+        }
 
         /**
          * 发起一次异步 RPC 调用。
@@ -338,13 +340,24 @@ retryContext.setDorpcFunction(new Function<ServiceMetadata, CompletableFuture<Re
          * Provider 端收到这个对象后，就能根据 serviceName + methodName + paramsClass 进行反射调用。
          */
         private @NonNull Request buildRequest(Method method, Object[] args) {
+            boolean genericInvoke = method.getName().equals("$invoke");
             // 组装本次 RPC 请求。
             Request request = new Request();
-            request.setMethodName(method.getName());
             // request.setMethodName("privateAdd"); // 仅用于测试不存在方法的异常路径。
-            request.setParams(args);
-            request.setParamsClass(method.getParameterTypes());
-            request.setServiceName(interfaceClass.getName());
+            request.setGenericInvoke(genericInvoke);
+
+            if (genericInvoke) {
+                request.setParamsClassStr((String[]) args[2]);
+                request.setServiceName(args[0].toString());
+                request.setMethodName(args[1].toString());
+                request.setParams((Object[])args[3]);
+            } else {
+                request.setParamsClass(method.getParameterTypes());
+                request.setServiceName(interfaceClass.getName());
+                request.setMethodName(method.getName());
+                request.setParams(args);
+            }
+
             return request;
         }
     }

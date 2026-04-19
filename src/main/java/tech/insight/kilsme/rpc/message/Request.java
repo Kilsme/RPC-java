@@ -30,4 +30,7 @@ public class Request implements Serializable {
     // 参数值列表。
     // 与 paramsClass 一起构成完整的反射入参信息。
     private   Object[]params;
+    private boolean  genericInvoke;//判断是否是返回调用
+    private String[] paramsClassStr;//泛化调用时参数类型列表
+
 }

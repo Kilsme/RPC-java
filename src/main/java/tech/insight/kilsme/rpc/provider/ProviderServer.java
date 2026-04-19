@@ -1,5 +1,6 @@
 package tech.insight.kilsme.rpc.provider;
 
+import com.alibaba.fastjson2.JSONObject;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -25,12 +26,17 @@ import tech.insight.kilsme.rpc.register.ServiceRegistry;
 import tech.insight.kilsme.rpc.serialize.Serializer;
 import tech.insight.kilsme.rpc.serialize.SerializerManager;
 
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static com.fasterxml.jackson.databind.type.LogicalType.Map;
 
 /**
  * Provider 端 Netty 服务器。
@@ -54,6 +60,7 @@ public class ProviderServer {
     private final SerializerManager serializerManager;
     private final CompressionManager compressionManager;
     private ThreadPoolExecutor invokeExecutor;
+    private static final Set<Class<?>> NO_RESOLVE_CLASS_SET = Set.of(int.class, String.class);
 
     public ProviderServer(ProviderProperties providerProperties) {
         this.providerProperties = providerProperties;
@@ -229,7 +236,6 @@ public class ProviderServer {
             log.info("地址：{}连接了", ctx.channel().remoteAddress());
             ctx.channel().attr(KilsmeEncoder.SERIALIZE_KEY).set(providerProperties.getSerialize());
             ctx.channel().attr(KilsmeEncoder.SERIALIZE_MANAGER_KEY).set(serializerManager);
-
             ctx.channel().attr(KilsmeEncoder.COMPRESS_KEY).set(providerProperties.getCompress());
             ctx.channel().attr(KilsmeEncoder.COMPRESS_MANAGER_KEY).set(compressionManager);
             ctx.fireChannelActive();
@@ -253,12 +259,12 @@ public class ProviderServer {
 
         @Override
         public void rejectedExecution(Runnable task, ThreadPoolExecutor executor) {
-               if(task instanceof InvokeTask invokeTask){
-                   Response fail = Response.fail("provider线程池满了，无法处理请求", invokeTask.request.getRequestId());
-                   invokeTask.channelHandlerContext.write(fail);
-                   return;
-               }
-               throw  new RuntimeException("task提交类型报错");
+            if (task instanceof InvokeTask invokeTask) {
+                Response fail = Response.fail("provider线程池满了，无法处理请求", invokeTask.request.getRequestId());
+                invokeTask.channelHandlerContext.write(fail);
+                return;
+            }
+            throw new RuntimeException("task提交类型报错");
         }
     }
 
@@ -271,7 +277,6 @@ public class ProviderServer {
             this.channelHandlerContext = channelHandlerContext;
             this.request = request;
             this.invocation = invocation;
-
         }
 
         @Override
@@ -279,12 +284,18 @@ public class ProviderServer {
             EventLoop eventLoop = channelHandlerContext.channel().eventLoop();
             try {
                 long startTime = System.currentTimeMillis();
+                Class[] paramsType = resolveMethodParams(request);
                 // 真正调用接口实现方法。
                 // 参数类型必须对上，否则反射会找不到方法或出现参数不匹配异常。
-                Object result = invocation.invoke(request.getMethodName(), request.getParamsClass(), request.getParams());
+                Object result = invocation.invoke(
+                        request.getMethodName(),
+                        paramsType,
+                        resolveMethodParams(request, paramsType));//map=>user
                 log.info("{}函数被远程调用了{}，结果是{},requestId{},耗时是{}", request.getServiceName(), request.getMethodName(), result,
                         request.getRequestId(), System.currentTimeMillis() - startTime);
-                eventLoop.execute(() -> channelHandlerContext.writeAndFlush(Response.success(result, request.getRequestId())));
+
+                Object finalResult = request.isGenericInvoke()?resolveResult(result):result;
+                eventLoop.execute(() -> channelHandlerContext.writeAndFlush(Response.success(finalResult, request.getRequestId())));
             } catch (Exception e) {
                 eventLoop.execute(() -> {
                     Response failResp = Response.fail(String.format("%s.%s 调用失败: %s", request.getServiceName(), request.getMethodName(), e.getMessage()), request.getRequestId());
@@ -294,6 +305,68 @@ public class ProviderServer {
             // 这里输出原始请求对象，方便调试时查看请求是否完整到达 Provider。
             System.out.println(request);
         }
+
+        private Object resolveResult(Object result) {
+            Class<?> resultClass = result.getClass();
+            if (NO_RESOLVE_CLASS_SET.contains(resultClass)) {
+                return result;
+            }
+            return new HashMap<>(JSONObject.from(result));
+        }
+
+        private Class[] resolveMethodParams(Request request) throws ClassNotFoundException {
+            if (!request.isGenericInvoke()) {
+                return request.getParamsClass();
+            }
+            String[] paramsClassStr = request.getParamsClassStr();
+            Class[] res = new Class[paramsClassStr.length];
+            for (int i = 0; i < paramsClassStr.length; i++) {
+                String classStr = paramsClassStr[i];
+                res[i] = analysisFromString(classStr);
+            }
+            return res;
+        }
+
+        @SuppressWarnings("all")
+        private Object[] resolveMethodParams(Request request, Class[] paramsType) {
+            if (!request.isGenericInvoke()) {
+                return request.getParams();
+            }
+            Object[] params = request.getParams();
+            Object[] result = new Object[params.length];
+            for (int i = 0; i < params.length; i++) {
+                if (params[i] instanceof Map) {
+                    result[i] = new JSONObject((Map) params[i]).toJavaObject(paramsType[i]);
+                } else {
+                    result[i] = params[i];
+                }
+            }
+            return result;
+        }
+
+        @SuppressWarnings("all")
+        private Class<?> analysisFromString(String classStr) throws ClassNotFoundException {
+            if (classStr.equals("int")) {
+                return int.class;
+            } else if (classStr.equals("long")) {
+                return long.class;
+            } else if (classStr.equals("double")) {
+                return double.class;
+            } else if (classStr.equals("float")) {
+                return float.class;
+            } else if (classStr.equals("boolean")) {
+                return boolean.class;
+            } else if (classStr.equals("char")) {
+                return char.class;
+            } else if (classStr.equals("byte")) {
+                return byte.class;
+            } else if (classStr.equals("short")) {
+                return short.class;
+            }
+            return Class.forName(classStr);
+        }
+
+
     }
 
     // 关闭 Provider 线程组。

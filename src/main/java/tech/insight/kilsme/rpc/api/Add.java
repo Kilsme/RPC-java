@@ -20,4 +20,6 @@ public interface Add {
      * 计算两个整数之差。
      */
     Integer minus(int a ,int b);
+
+    User mergeAge(User user1,User user2);
 }
