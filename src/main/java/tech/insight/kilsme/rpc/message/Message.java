@@ -30,7 +30,9 @@ public class Message {
         // Consumer 发往 Provider 的调用请求。
         REQUEST(1,Request.class),
         // Provider 返回给 Consumer 的调用结果。
-        RESPONSE(2,Response.class);
+        RESPONSE(2,Response.class),
+        HEARTBEAT_REQUEST(3,HeartbeatRequest.class),
+        HEARTBEAT_RESPONSE(4,HeartbeatResponse.class);
         private static final Map<Class<?>,MessageType>CLASS_CACHE=new HashMap<>();
         private static final Map<Byte,MessageType>CODE_CACHE=new HashMap<>();
         private final byte code;

@@ -5,13 +5,15 @@ import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.AttributeKey;
 import lombok.extern.slf4j.Slf4j;
+import tech.insight.kilsme.rpc.handler.HeartbeatHandler;
 import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
 import tech.insight.kilsme.rpc.codec.KilsmeEncoder;
-import tech.insight.kilsme.rpc.codec.ResponseEncoder;
 import tech.insight.kilsme.rpc.compress.Compression;
 import tech.insight.kilsme.rpc.compress.CompressionManager;
+import tech.insight.kilsme.rpc.handler.TrafficRecordHandler;
 import tech.insight.kilsme.rpc.limit.ConcurrencyLimiter;
 import tech.insight.kilsme.rpc.limit.Limiter;
 import tech.insight.kilsme.rpc.limit.RateLimiter;
@@ -24,6 +26,7 @@ import tech.insight.kilsme.rpc.serialize.Serializer;
 import tech.insight.kilsme.rpc.serialize.SerializerManager;
 
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -96,8 +99,11 @@ public class ProviderServer {
                             // 入站：字节流 -> Request；出站：Response -> 字节流。
                             // pipeline 顺序：先解码，再限流，再执行业务，最后编码响应。
                             nioSocketChannel.pipeline()
+                                    .addLast(new TrafficRecordHandler())
                                     .addLast(new KilsmeDecoder())
                                     .addLast(new KilsmeEncoder())
+                                    .addLast(new IdleStateHandler(30,5,0, TimeUnit.SECONDS))//增加心跳监控的hanlder
+                                    .addLast(new HeartbeatHandler())
                                     .addLast(new LimitHandler())
                                     .addLast(new ProviderHandler());
                         }

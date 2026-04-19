@@ -4,12 +4,14 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.timeout.IdleStateHandler;
 import lombok.extern.slf4j.Slf4j;
+import tech.insight.kilsme.rpc.handler.HeartbeatHandler;
 import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
 import tech.insight.kilsme.rpc.codec.KilsmeEncoder;
-import tech.insight.kilsme.rpc.codec.RequestEncoder;
 import tech.insight.kilsme.rpc.compress.Compression;
 import tech.insight.kilsme.rpc.compress.CompressionManager;
+import tech.insight.kilsme.rpc.handler.TrafficRecordHandler;
 import tech.insight.kilsme.rpc.message.Response;
 import tech.insight.kilsme.rpc.register.ServiceMetadata;
 import tech.insight.kilsme.rpc.serialize.Serializer;
@@ -18,6 +20,7 @@ import tech.insight.kilsme.rpc.serialize.SerializerManager;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Consumer 连接管理器。
@@ -101,9 +104,12 @@ public  class ConnectionManager {
                         // 出站：RequestEncoder 在 writeAndFlush(Request) 时自动生效。
                         // 这里的顺序非常重要：先解码，后处理业务，否则拿到的只是原始字节流。
                         nioSocketChannel.pipeline()
+                                .addLast(new TrafficRecordHandler())
                                 .addLast(new KilsmeDecoder())
                                 .addLast(new KilsmeEncoder())
                                 // 业务入站处理器：收到响应后完成 Future，并关闭连接。
+                                .addLast(new IdleStateHandler(30,5,0, TimeUnit.SECONDS))
+                                .addLast(new HeartbeatHandler())
                                 .addLast(new ConsumerHandler());
                     }
                 });
