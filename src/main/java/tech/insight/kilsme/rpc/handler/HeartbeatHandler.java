@@ -23,14 +23,22 @@ public class HeartbeatHandler extends SimpleChannelInboundHandler<Object> {
        }
        channelHandlerContext.fireChannelRead(msg);
     }
+    /*
+    userEventTriggered 方法正是用来处理 IdleStateHandler 发出的空闲信号的。
+你可以把它想象成一个“事件监听器”。当 IdleStateHandler 监控到连接空闲时，它不会直接采取行动，
+而是抛出一个事件。
+Netty 框架会自动调用这个方法，把事件传递进来，让你决定该怎么处理。
+     */
 
     @Override
     public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
          if(evt instanceof IdleStateEvent idleStateEvent){
              IdleState state = idleStateEvent.state();
              if(state==IdleState.READER_IDLE){
+                 //长时间没有收到消息，包括心跳检测，说明可能挂掉了，直接关闭
                    ctx.channel().close();
              }else if(state==IdleState.WRITER_IDLE){
+                 //长时间没有发送消息，说明可能连接不稳定，发送一个心跳请求试试
                  ctx.writeAndFlush(new HeartbeatRequest());
              }
          }

@@ -26,6 +26,9 @@ import tech.insight.kilsme.rpc.serialize.Serializer;
 import tech.insight.kilsme.rpc.serialize.SerializerManager;
 
 import java.util.Locale;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -50,14 +53,22 @@ public class ProviderServer {
     private final Limiter globallLimiter;
     private final SerializerManager serializerManager;
     private final CompressionManager compressionManager;
+    private ThreadPoolExecutor invokeExecutor;
 
     public ProviderServer(ProviderProperties providerProperties) {
         this.providerProperties = providerProperties;
         this.serviceRegister = new DefaultServiceRegister();
         this.registry = new ProviderRegistry();
         this.globallLimiter = new ConcurrencyLimiter(providerProperties.getGlobalMaxRequest());
-        this.serializerManager=new SerializerManager();
-        this.compressionManager=new CompressionManager();
+        this.serializerManager = new SerializerManager();
+        this.compressionManager = new CompressionManager();
+        this.invokeExecutor = new ThreadPoolExecutor(
+                4,
+                4,
+                10,
+                TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(1024),
+                new FastFailResponseHandler());
     }
 
     /**
@@ -102,7 +113,7 @@ public class ProviderServer {
                                     .addLast(new TrafficRecordHandler())
                                     .addLast(new KilsmeDecoder())
                                     .addLast(new KilsmeEncoder())
-                                    .addLast(new IdleStateHandler(30,5,0, TimeUnit.SECONDS))//增加心跳监控的hanlder
+                                    .addLast(new IdleStateHandler(30, 5, 0, TimeUnit.SECONDS))//增加心跳监控的hanlder
                                     .addLast(new HeartbeatHandler())
                                     .addLast(new LimitHandler())
                                     .addLast(new ProviderHandler());
@@ -206,19 +217,9 @@ public class ProviderServer {
                 channelHandlerContext.writeAndFlush(failResp);
                 return;
             }
-            try {
-                long startTime = System.currentTimeMillis();
-                // 真正调用接口实现方法。
-                // 参数类型必须对上，否则反射会找不到方法或出现参数不匹配异常。
-                Object result = invocation.invoke(request.getMethodName(), request.getParamsClass(), request.getParams());
-                log.info("{}函数被远程调用了{}，结果是{},requestId{},耗时是{}", request.getServiceName(), request.getMethodName(), result,
-                        request.getRequestId(), System.currentTimeMillis() - startTime);
-                channelHandlerContext.writeAndFlush(Response.success(result, request.getRequestId()));
-            } catch (Exception e) {
-                Response failResp = Response.fail(String.format("%s.%s 调用失败: %s", request.getServiceName(), request.getMethodName(), e.getMessage()), request.getRequestId());
-                channelHandlerContext.writeAndFlush(failResp);
-                return;
-            }
+            EventLoop eventLoop = channelHandlerContext.channel().eventLoop();
+            //将invoke行为提交给线程池去处理
+            invokeExecutor.execute(new InvokeTask(request, channelHandlerContext, invocation));
             // 这里输出原始请求对象，方便调试时查看请求是否完整到达 Provider。
             System.out.println(request);
         }
@@ -246,6 +247,53 @@ public class ProviderServer {
         public void channelInactive(ChannelHandlerContext ctx) throws Exception {
             log.info("地址：{}断开了", ctx.channel().remoteAddress());
             ctx.fireChannelInactive();
+        }
+    }
+
+    private class FastFailResponseHandler implements RejectedExecutionHandler {
+
+        @Override
+        public void rejectedExecution(Runnable task, ThreadPoolExecutor executor) {
+               if(task instanceof InvokeTask invokeTask){
+                   Response fail = Response.fail("provider线程池满了，无法处理请求", invokeTask.request.getRequestId());
+                   invokeTask.channelHandlerContext.write(fail);
+                   return;
+               }
+               throw  new RuntimeException("task提交类型报错");
+        }
+    }
+
+    private class InvokeTask implements Runnable {
+        Request request;
+        ChannelHandlerContext channelHandlerContext;
+        ProviderRegistry.invocation<?> invocation;
+
+        public InvokeTask(Request request, ChannelHandlerContext channelHandlerContext, ProviderRegistry.invocation<?> invocation) {
+            this.channelHandlerContext = channelHandlerContext;
+            this.request = request;
+            this.invocation = invocation;
+
+        }
+
+        @Override
+        public void run() {
+            EventLoop eventLoop = channelHandlerContext.channel().eventLoop();
+            try {
+                long startTime = System.currentTimeMillis();
+                // 真正调用接口实现方法。
+                // 参数类型必须对上，否则反射会找不到方法或出现参数不匹配异常。
+                Object result = invocation.invoke(request.getMethodName(), request.getParamsClass(), request.getParams());
+                log.info("{}函数被远程调用了{}，结果是{},requestId{},耗时是{}", request.getServiceName(), request.getMethodName(), result,
+                        request.getRequestId(), System.currentTimeMillis() - startTime);
+                eventLoop.execute(() -> channelHandlerContext.writeAndFlush(Response.success(result, request.getRequestId())));
+            } catch (Exception e) {
+                eventLoop.execute(() -> {
+                    Response failResp = Response.fail(String.format("%s.%s 调用失败: %s", request.getServiceName(), request.getMethodName(), e.getMessage()), request.getRequestId());
+                    channelHandlerContext.writeAndFlush(failResp);
+                });
+            }
+            // 这里输出原始请求对象，方便调试时查看请求是否完整到达 Provider。
+            System.out.println(request);
         }
     }
 

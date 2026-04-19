@@ -108,6 +108,9 @@ public  class ConnectionManager {
                                 .addLast(new KilsmeDecoder())
                                 .addLast(new KilsmeEncoder())
                                 // 业务入站处理器：收到响应后完成 Future，并关闭连接。
+                                //IdleStateHandler 是 Netty 框架中一个非常核心的工具类，专门用来检测连接是否处于空闲状态。
+                                //简单来说，它的作用就是充当一个“监控器”，帮你盯着当前的网络连接。如果发现在规定的时间内，连
+                                // 接上没有数据的读写操作，它就会触发一个“空闲事件”，通知你的业务代码去处理（比如发送心跳包，或者断开死连接）。
                                 .addLast(new IdleStateHandler(30,5,0, TimeUnit.SECONDS))
                                 .addLast(new HeartbeatHandler())
                                 .addLast(new ConsumerHandler());

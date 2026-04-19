@@ -16,7 +16,6 @@ public class TrafficRecordHandler extends ChannelDuplexHandler {//双向处理�
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         if (msg instanceof ByteBuf byteBuf) {
             trafficRecord.download.getAndAdd(byteBuf.readableBytes());
-
         }
         ctx.fireChannelRead(msg);
     }
