@@ -1,0 +1,2 @@
+tech.insight.kilsme.rpc.serialize.HessianSerializer
+tech.insight.kilsme.rpc.serialize.JsonSerializer

@@ -1,0 +1,3 @@
+tech.insight.kilsme.rpc.retry.FailoverRetryPolicy
+tech.insight.kilsme.rpc.retry.ForkingRetryPolicy
+tech.insight.kilsme.rpc.retry.RetrySame

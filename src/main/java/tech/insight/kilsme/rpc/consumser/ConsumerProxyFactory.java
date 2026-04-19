@@ -50,6 +50,7 @@ public class ConsumerProxyFactory {
     private final InFlightRequestManager inFlightRequestManager;
     private final CircuitBreakerManager circuitBreakerManager;
     private Fallback fallback;
+    private final  RetryPolicyManager retryPolicyManager;
 
     /**
      * 初始化消费端基础组件。
@@ -73,6 +74,7 @@ public class ConsumerProxyFactory {
         this.manager = new ConnectionManager(inFlightRequestManager, consumerProperties);
         this.consumerProperties = consumerProperties;
         this.fallback = new DefaultFallback(new CacheFallback(), new MockFallback());
+        this.retryPolicyManager=new RetryPolicyManager();
     }
 
     /**
@@ -86,22 +88,20 @@ public class ConsumerProxyFactory {
         // 通过 JDK 动态代理把本地接口调用转为远程 RPC 请求。
         // 调用方拿到的并不是一个真实实现类，而是一个“拦截器代理对象”。
         return (I) Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(),
-                new Class[]{interfaceClass}, new ConsumerInvocationHandler(interfaceClass, createLoadBalancer(), createRetryPolicy()));
+                new Class[]{interfaceClass}, new ConsumerInvocationHandler(interfaceClass,
+                        createLoadBalancer(),
+                        createRetryPolicy(consumerProperties.getRetryPolicy())));
     }
 
     /**
      * 根据配置创建重试策略实例。
      */
-    private RetryPolicy createRetryPolicy() {
-        switch (consumerProperties.getRetryPolicy()) {
-            case "retrySame":
-                return new RetrySame();
-            case "failover":
-                return new FailoverRetryPolicy();
-            case "forking":
-                return new ForkingRetryPolicy();
+    private RetryPolicy createRetryPolicy(String name) {
+        RetryPolicy retryPolicy = retryPolicyManager.getRetryPolicy(name);
+        if(retryPolicy==null){
+            throw new IllegalArgumentException("没有或者重试策略" + name);
         }
-        throw new IllegalArgumentException("没有或者重试策略" + consumerProperties.getRetryPolicy());
+        return retryPolicy;
     }
 
     /**

@@ -11,9 +11,9 @@ import tech.insight.kilsme.rpc.serialize.SerializerManager;
 import tech.insight.kilsme.rpc.version.Version;
 
 public class KilsmeEncoder extends MessageToByteEncoder<Object> {
-    public static final AttributeKey<Integer> SERIALIZE_KEY = AttributeKey.valueOf("serializeKey");
+    public static final AttributeKey<String> SERIALIZE_KEY = AttributeKey.valueOf("serializeKey");
     public static final AttributeKey<SerializerManager> SERIALIZE_MANAGER_KEY = AttributeKey.valueOf("serializeManagerKey");
-    public static final AttributeKey<Integer> COMPRESS_KEY = AttributeKey.valueOf("compressKey");
+    public static final AttributeKey<String> COMPRESS_KEY = AttributeKey.valueOf("compressKey");
     public static final AttributeKey<CompressionManager> COMPRESS_MANAGER_KEY =
             AttributeKey.valueOf("compressManagerKey");
     private volatile byte defaultSerializerAndCompression;
@@ -58,18 +58,17 @@ public class KilsmeEncoder extends MessageToByteEncoder<Object> {
             return;
         }
         SerializerManager serializerManager = context.channel().attr(SERIALIZE_MANAGER_KEY).get();
-        Integer serializeCode = context.channel().attr(SERIALIZE_KEY).get();
-        defaultSerializer= serializerManager.getSerializer(serializeCode);
+       String serializeKey = context.channel().attr(SERIALIZE_KEY).get();
+        defaultSerializer= serializerManager.getSerializer(serializeKey);
         CompressionManager CompressionManager = context.channel().attr(COMPRESS_MANAGER_KEY).get();
-        Integer CompressionCode = context.channel().attr(COMPRESS_KEY).get();
-        defaultCompression = CompressionManager.getCompression(CompressionCode);
-        Integer compressionCode =  context.channel().attr(COMPRESS_KEY).get();
+        String CompressionKey = context.channel().attr(COMPRESS_KEY).get();
+        defaultCompression = CompressionManager.getCompression(CompressionKey);
         if (defaultCompression == null) {
             throw new IllegalArgumentException("不存在默认的压缩器");
         }
         if (defaultSerializer == null) {
             throw new IllegalArgumentException("不存在默认的序列化器");
         }
-        defaultSerializerAndCompression = (byte) ((serializeCode << 4) | compressionCode);
+        defaultSerializerAndCompression = (byte) ((defaultSerializer.code() << 4) | defaultCompression.code());
     }
 }

@@ -1,0 +1,2 @@
+tech.insight.kilsme.rpc.compress.GzipCompression
+tech.insight.kilsme.rpc.compress.NoneCompression

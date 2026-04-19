@@ -2,12 +2,14 @@ package tech.insight.kilsme.rpc.compress;
 
 import lombok.extern.slf4j.Slf4j;
 import tech.insight.kilsme.rpc.exception.RpcException;
+import tech.insight.kilsme.rpc.spi.Spi;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 @Slf4j
+@Spi(value = "gzip",code = 1)
 public class GzipCompression implements Compression {
     @Override
     public byte[] compress(byte[] bytes) {
@@ -38,5 +40,14 @@ public class GzipCompression implements Compression {
         }
     }
 
+    @Override
+    public String getName() {
+        return "gzip";
+    }
+
+    @Override
+    public int code() {
+        return 1;
+    }
 }
 

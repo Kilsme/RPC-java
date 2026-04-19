@@ -10,6 +10,7 @@ package tech.insight.kilsme.rpc.retry;
 import tech.insight.kilsme.rpc.exception.RpcException;
 import tech.insight.kilsme.rpc.message.Response;
 import tech.insight.kilsme.rpc.register.ServiceMetadata;
+import tech.insight.kilsme.rpc.spi.Spi;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Forking 重试策略：并发请求多个 Provider，取最先返回的结果。
  */
+@Spi("forking")
 public class ForkingRetryPolicy implements RetryPolicy{
     @Override
     public Response retry(RetryContext retryContext) throws Exception {

@@ -3,6 +3,7 @@ package tech.insight.kilsme.rpc.retry;
 import tech.insight.kilsme.rpc.exception.RpcException;
 import tech.insight.kilsme.rpc.message.Response;
 import tech.insight.kilsme.rpc.register.ServiceMetadata;
+import tech.insight.kilsme.rpc.spi.Spi;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,6 +16,7 @@ import java.util.concurrent.TimeUnit;
  * 某实例调用失败后切换到其他实例继续重试，
  * 能提升整体成功率，是分布式 RPC 常见重试模型。
  */
+@Spi("failover")
 public class FailoverRetryPolicy implements RetryPolicy {
     @Override
     public Response retry(RetryContext retryContext) throws Exception {

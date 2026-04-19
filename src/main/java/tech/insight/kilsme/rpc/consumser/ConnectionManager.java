@@ -135,11 +135,10 @@ public  class ConnectionManager {
         @Override
         public void channelActive(ChannelHandlerContext ctx) throws Exception {
             log.info("地址：{}连接了", ctx.channel().remoteAddress());
-            Serializer.SerializerType serializerType = Serializer.SerializerType.valueOf(consumerProperties.getSerialize().toUpperCase(Locale.ROOT));
-            ctx.channel().attr(KilsmeEncoder.SERIALIZE_KEY).set(serializerType.getTypeCode());
+            Serializer serializer = serializerManager.getSerializer(consumerProperties.getSerialize());
+            ctx.channel().attr(KilsmeEncoder.SERIALIZE_KEY).set(consumerProperties.getSerialize());
             ctx.channel().attr(KilsmeEncoder.SERIALIZE_MANAGER_KEY).set(serializerManager);
-            Compression.CompressionType compressionType = Compression.CompressionType.valueOf(consumerProperties.getCompress().toUpperCase(Locale.ROOT));
-            ctx.channel().attr(KilsmeEncoder.COMPRESS_KEY).set(compressionType.getTypeCode());
+            ctx.channel().attr(KilsmeEncoder.COMPRESS_KEY).set(consumerProperties.getCompress());
             ctx.channel().attr(KilsmeEncoder.COMPRESS_MANAGER_KEY).set(compressionManager);
             ctx.fireChannelActive();
 

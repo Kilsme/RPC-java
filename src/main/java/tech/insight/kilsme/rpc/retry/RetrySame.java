@@ -3,6 +3,7 @@ package tech.insight.kilsme.rpc.retry;
 import lombok.extern.slf4j.Slf4j;
 import tech.insight.kilsme.rpc.exception.RpcException;
 import tech.insight.kilsme.rpc.message.Response;
+import tech.insight.kilsme.rpc.spi.Spi;
 
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
@@ -16,6 +17,7 @@ import java.util.concurrent.TimeoutException;
  * 适用于短暂抖动场景，但对实例级持续故障恢复能力较弱。
  */
 @Slf4j
+@Spi(value = "retrySame")
 public class RetrySame implements RetryPolicy {
     // 最大重试次数。
     final int retryMax = 3;
