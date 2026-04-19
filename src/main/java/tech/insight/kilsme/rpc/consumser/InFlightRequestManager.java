@@ -81,7 +81,6 @@ public class InFlightRequestManager {
     }
     public void cleatChannel(ServiceMetadata metadata){
         channelLimiterMap.remove(metadata);
-
     }
 
     /**
@@ -91,14 +90,24 @@ public class InFlightRequestManager {
      * @param response 响应对象
      * @return 是否成功找到并完成
      */
-    public boolean completeRuest(int requestId,Response response){
-        CompletableFuture<Response>future=inFlightRequestTable.remove(requestId);
-        if(future==null){
-            log.warn("未找到对应的请求，requestId={}",requestId);
+    public boolean completeRequest(int requestId, Response response){
+//        CompletableFuture<Response>future=inFlightRequestTable.remove(requestId);
+//        if(future==null){
+//            log.warn("未找到对应的请求，requestId={}",requestId);
+//            return false;
+//        }
+//
+//        return  future.complete(response);
+        CompletableFuture<Response> future = inFlightRequestTable.get(requestId);
+        if (future == null) {
+            log.warn("收到迟到响应或请求已超时，requestId={}", requestId);
             return false;
         }
-
-        return  future.complete(response);
+        boolean completed = future.complete(response);
+        if (completed) {
+            inFlightRequestTable.remove(requestId, future);
+        }
+        return completed;
     }
 
     /**

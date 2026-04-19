@@ -19,11 +19,11 @@ public class ProviderProperties {
     // 注册中心配置（用于服务注册）。
     private RegistryConfig registryConfig;
     // Provider 全局并发上限：整个服务端允许同时处理的请求数量。
-    private int globalMaxRequest=5;
+    private int globalMaxRequest=50;
     // 单 Consumer / 单连接的速率上限。
-    private int preConsumerMaxRequest=5;
+    private int preConsumerMaxRequest=50;
     // Netty worker 线程数：处理 IO 和业务的工作线程数量。
     private int workThreadNum=4;
     private String serialize="json";//序列化算法
-    private String compress="";//压缩算法
+    private String compress="none";//压缩算法
 }

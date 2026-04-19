@@ -2,6 +2,8 @@ package tech.insight.kilsme.rpc.message;
 
 import lombok.Data;
 
+import java.io.Serializable;
+
 /**
  * RPC 响应体。
  * <p>
@@ -10,7 +12,7 @@ import lombok.Data;
  * </p>
  */
 @Data
-public class Response {
+public class Response implements Serializable {
     // RPC 返回值（示例中只回传 add 结果）。
     // 当 code=200 时，这里通常就是业务返回值；当 code=400 时，这里一般为空。
     Object res;

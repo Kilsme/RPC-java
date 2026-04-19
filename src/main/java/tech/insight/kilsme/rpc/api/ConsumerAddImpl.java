@@ -5,7 +5,7 @@ public class ConsumerAddImpl implements Add{
     @Override
     public Integer add(int a, int b) {
 
-        return 0;
+        return a+b;
     }
 
     @Override

@@ -2,6 +2,7 @@ package tech.insight.kilsme.rpc.message;
 
 import lombok.Data;
 
+import java.io.Serializable;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -12,7 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * </p>
  */
 @Data
-public class Request {
+public class Request implements Serializable {
     // 进程内自增请求号，用于请求-响应匹配。
     // Consumer 端会把它作为 in-flight 表的 key，Provider 回包时也会带回来。
     private static final AtomicInteger REQUEST_COUNTER=new AtomicInteger();

@@ -32,11 +32,19 @@ public class Message {
         // Provider 返回给 Consumer 的调用结果。
         RESPONSE(2,Response.class);
         private static final Map<Class<?>,MessageType>CLASS_CACHE=new HashMap<>();
+        private static final Map<Byte,MessageType>CODE_CACHE=new HashMap<>();
         private final byte code;
         private final Class<?>messageClass;
         static{
             for(MessageType value:values()){
                 if (CLASS_CACHE.put(value.messageClass,value)!=null) {
+                    try {
+                        throw new IllegalAccessException("vale没有对应的类型");
+                    } catch (IllegalAccessException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+                if (CODE_CACHE.put(value.code,value)!=null) {
                     try {
                         throw new IllegalAccessException("vale没有对应的类型");
                     } catch (IllegalAccessException e) {
@@ -60,6 +68,9 @@ public class Message {
         }
         public static MessageType ofClass(Class<?>messageClass){
             return CLASS_CACHE.get(messageClass);
+        }
+        public static MessageType ofCode(Byte messageCode){
+            return CODE_CACHE.get(messageCode);
         }
     }
 }

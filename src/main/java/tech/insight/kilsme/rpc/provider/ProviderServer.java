@@ -10,6 +10,8 @@ import lombok.extern.slf4j.Slf4j;
 import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
 import tech.insight.kilsme.rpc.codec.KilsmeEncoder;
 import tech.insight.kilsme.rpc.codec.ResponseEncoder;
+import tech.insight.kilsme.rpc.compress.Compression;
+import tech.insight.kilsme.rpc.compress.CompressionManager;
 import tech.insight.kilsme.rpc.limit.ConcurrencyLimiter;
 import tech.insight.kilsme.rpc.limit.Limiter;
 import tech.insight.kilsme.rpc.limit.RateLimiter;
@@ -44,6 +46,7 @@ public class ProviderServer {
     private final ProviderProperties providerProperties;
     private final Limiter globallLimiter;
     private final SerializerManager serializerManager;
+    private final CompressionManager compressionManager;
 
     public ProviderServer(ProviderProperties providerProperties) {
         this.providerProperties = providerProperties;
@@ -51,6 +54,7 @@ public class ProviderServer {
         this.registry = new ProviderRegistry();
         this.globallLimiter = new ConcurrencyLimiter(providerProperties.getGlobalMaxRequest());
         this.serializerManager=new SerializerManager();
+        this.compressionManager=new CompressionManager();
     }
 
     /**
@@ -93,7 +97,7 @@ public class ProviderServer {
                             // pipeline 顺序：先解码，再限流，再执行业务，最后编码响应。
                             nioSocketChannel.pipeline()
                                     .addLast(new KilsmeDecoder())
-                                    .addLast(new ResponseEncoder())
+                                    .addLast(new KilsmeEncoder())
                                     .addLast(new LimitHandler())
                                     .addLast(new ProviderHandler());
                         }
@@ -218,7 +222,10 @@ public class ProviderServer {
             log.info("地址：{}连接了", ctx.channel().remoteAddress());
             Serializer.SerializerType serializerType = Serializer.SerializerType.valueOf(providerProperties.getSerialize().toUpperCase(Locale.ROOT));
             ctx.channel().attr(KilsmeEncoder.SERIALIZE_KEY).set(serializerType.getTypeCode());
-            ctx.channel().attr(KilsmeEncoder.SERIALIZE_MANGER_KEY).set(serializerManager);
+            ctx.channel().attr(KilsmeEncoder.SERIALIZE_MANAGER_KEY).set(serializerManager);
+            Compression.CompressionType compressionType = Compression.CompressionType.valueOf(providerProperties.getCompress().toUpperCase(Locale.ROOT));
+            ctx.channel().attr(KilsmeEncoder.COMPRESS_KEY).set(compressionType.getTypeCode());
+            ctx.channel().attr(KilsmeEncoder.COMPRESS_MANAGER_KEY).set(compressionManager);
             ctx.fireChannelActive();
         }
 
@@ -235,7 +242,6 @@ public class ProviderServer {
             ctx.fireChannelInactive();
         }
     }
-
 
     // 关闭 Provider 线程组。
     public void stop() {

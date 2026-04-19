@@ -21,24 +21,24 @@ public class ConsumerProperties {
     // Netty worker 线程数：影响 Consumer 侧网络处理能力。
     private Integer workThreadNum=4;
     // 建连超时时间（毫秒）：与 Provider 建立 TCP 连接时最多等待多久。
-    private Integer connectTimeoutMs=3000;
+    private Integer connectTimeoutMs=50000;
     // 单次请求超时时间（毫秒）：一次 RPC 请求从发出到收到响应的等待上限。
-    private Integer requestTimeoutMs=3000;
+    private Integer requestTimeoutMs=50000;
     // 方法总超时时间（毫秒），包含重试耗时。
     // 这个值比 requestTimeoutMs 更大，因为它允许“失败后再补救几次”。
-    private Integer methodTimeOutMs=10000;
+    private Integer methodTimeOutMs=100000;
     // 负载均衡策略：robin/random。
     private String  loadBalancePolicy="robin";
     // 重试策略：retrySame/failover/forking。
     private String  retryPolicy="forking";
     private String serialize="json";//序列化算法
-    private String compress="";//压缩算法
+    private String compress="none";//压缩算法
     // 注册中心配置（类型、地址等）。
     private RegistryConfig registryConfig=new RegistryConfig();
     // Consumer 全局并发限流：最多允许多少个 RPC 在“在途”状态。
-    private int rpcPreSecond=5;
+    private int rpcPreSecond=50;
     // 单 Provider / 单连接限流：限制对同一个 Provider 的请求压力。
-    private int rpcPreChannel=2;
+    private int rpcPreChannel=50;
     private double slowRequestBreakRatio=0.5;
     private long slowRequestMs=1000;
 

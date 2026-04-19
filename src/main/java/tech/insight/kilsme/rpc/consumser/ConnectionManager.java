@@ -8,6 +8,8 @@ import lombok.extern.slf4j.Slf4j;
 import tech.insight.kilsme.rpc.codec.KilsmeDecoder;
 import tech.insight.kilsme.rpc.codec.KilsmeEncoder;
 import tech.insight.kilsme.rpc.codec.RequestEncoder;
+import tech.insight.kilsme.rpc.compress.Compression;
+import tech.insight.kilsme.rpc.compress.CompressionManager;
 import tech.insight.kilsme.rpc.message.Response;
 import tech.insight.kilsme.rpc.register.ServiceMetadata;
 import tech.insight.kilsme.rpc.serialize.Serializer;
@@ -33,6 +35,7 @@ public  class ConnectionManager {
     InFlightRequestManager inFlightRequestManager;
     private final ConsumerProperties consumerProperties;
     private final SerializerManager serializerManager;
+    private final CompressionManager compressionManager;
     // 注入统一 Bootstrap，保证连接参数一致。
     public ConnectionManager(InFlightRequestManager inFlightRequestManager,
                              ConsumerProperties consumerProperties) {
@@ -40,6 +43,7 @@ public  class ConnectionManager {
         this.consumerProperties=consumerProperties;
         this.bootstrap = crateBootstrap(consumerProperties);
         this.serializerManager =new SerializerManager();
+        this.compressionManager=new CompressionManager();
     }
 
     /**
@@ -98,7 +102,7 @@ public  class ConnectionManager {
                         // 这里的顺序非常重要：先解码，后处理业务，否则拿到的只是原始字节流。
                         nioSocketChannel.pipeline()
                                 .addLast(new KilsmeDecoder())
-                                .addLast(new RequestEncoder())
+                                .addLast(new KilsmeEncoder())
                                 // 业务入站处理器：收到响应后完成 Future，并关闭连接。
                                 .addLast(new ConsumerHandler());
                     }
@@ -116,7 +120,7 @@ public  class ConnectionManager {
         protected void channelRead0(ChannelHandlerContext channelHandlerContext, Response response) throws Exception {
             // 用 requestId 找到对应 Future 并完成，唤醒正在 get() 的业务线程。
             // 这里是“响应 -> 请求”的反向关联点。
-            inFlightRequestManager.completeRuest(response.getRequestId(), response);
+            inFlightRequestManager.completeRequest(response.getRequestId(), response);
         }
 
         @Override
@@ -124,7 +128,10 @@ public  class ConnectionManager {
             log.info("地址：{}连接了", ctx.channel().remoteAddress());
             Serializer.SerializerType serializerType = Serializer.SerializerType.valueOf(consumerProperties.getSerialize().toUpperCase(Locale.ROOT));
             ctx.channel().attr(KilsmeEncoder.SERIALIZE_KEY).set(serializerType.getTypeCode());
-            ctx.channel().attr(KilsmeEncoder.SERIALIZE_MANGER_KEY).set(serializerManager);
+            ctx.channel().attr(KilsmeEncoder.SERIALIZE_MANAGER_KEY).set(serializerManager);
+            Compression.CompressionType compressionType = Compression.CompressionType.valueOf(consumerProperties.getCompress().toUpperCase(Locale.ROOT));
+            ctx.channel().attr(KilsmeEncoder.COMPRESS_KEY).set(compressionType.getTypeCode());
+            ctx.channel().attr(KilsmeEncoder.COMPRESS_MANAGER_KEY).set(compressionManager);
             ctx.fireChannelActive();
 
         }
