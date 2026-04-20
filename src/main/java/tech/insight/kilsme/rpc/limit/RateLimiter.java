@@ -47,7 +47,7 @@ public class RateLimiter implements Limiter {
 
     @Override
     public void release() {
-
+        //速率限流不需要release
     }
 
     @Override

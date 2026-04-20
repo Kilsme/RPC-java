@@ -306,6 +306,7 @@ public class ProviderServer {
             System.out.println(request);
         }
 
+
         private Object resolveResult(Object result) {
             Class<?> resultClass = result.getClass();
             if (NO_RESOLVE_CLASS_SET.contains(resultClass)) {
