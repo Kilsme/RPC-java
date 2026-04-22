@@ -1,137 +1,237 @@
 # RPC-java
 
-一个基于 **Netty + Zookeeper** 的轻量级 Java RPC Demo，用于学习和演示 RPC 框架的核心机制：
+一个基于 **Netty + Zookeeper** 的轻量级 Java RPC 框架练手项目，覆盖了从“服务发布”到“服务治理”的完整链路，适合作为学习 RPC 核心机制的参考实现。
 
-- 服务注册与发现
-- 自定义协议编解码
-- 动态代理调用
-- 负载均衡
-- 限流 / 超时 / 重试 / 熔断 / 降级
-
-> 说明：这是教学/实践导向项目，重点在架构链路与治理能力，不是生产级 SDK。
+> 定位：教学 / 实践导向，强调机制完整性与可读性，不是生产级 SDK。
 
 ---
 
-## 1. 项目特性
+## 1. 项目能力概览
 
-- **通信层**：基于 Netty，使用 Pipeline 组织编解码、心跳、限流和业务处理。
-- **注册中心**：默认使用 Zookeeper（Curator）；Redis 注册中心预留扩展接口。
-- **协议层**：自定义请求/响应模型（`Request`、`Response`）与编解码器（`KilsmeEncoder`、`KilsmeDecoder`）。
-- **调用层**：Consumer 侧通过 JDK 动态代理将本地接口调用转为 RPC 请求。
-- **服务治理**：
-  - 负载均衡：随机、轮询
-  - 限流：并发限流、速率限流（Consumer/Provider 双侧）
-  - 重试：同机重试、故障转移、并发竞速
-  - 熔断：基于调用结果与耗时进行断路保护
-  - 降级：缓存回退、Mock 回退
-- **可扩展性**：序列化（JSON/Hessian）、压缩（None/Gzip）、重试策略均可插拔。
+### 通信与协议
+- 基于 Netty 的长连接通信
+- 自定义二进制协议（长度字段 + 魔数 + 消息类型 + 版本 + 序列化/压缩标识 + 消息体）
+- 请求 / 响应 / 心跳请求 / 心跳响应四类消息
+- 自定义编解码器：`KilsmeEncoder` / `KilsmeDecoder`
+
+### 服务注册与发现
+- 注册中心抽象接口：`ServiceRegistry`
+- 默认门面：`DefaultServiceRegister`
+- 已实现：Zookeeper（Curator ServiceDiscovery）
+- 预留：Redis 注册中心
+- Consumer 侧具备注册中心查询失败的本地缓存兜底
+
+### 调用模型
+- Consumer 通过 JDK 动态代理发起远程调用
+- 支持接口调用与泛化调用（`GenericConsumer#$invoke`）
+- Provider 基于接口方法反射执行
+
+### 服务治理
+- 负载均衡：`robin`（轮询）、`random`（随机）
+- 限流：
+  - Provider 侧全局并发限流（`ConcurrencyLimiter`）
+  - Provider 侧连接维度速率限流（`RateLimiter`）
+  - Consumer 侧在途请求与连接维度限流
+- 重试策略（SPI）：`retrySame` / `failover` / `forking`
+- 熔断：基于滑动窗口慢调用比例的断路器
+- 降级：缓存回退 + Mock 回退组合策略
+
+### 可扩展点（SPI / ServiceLoader）
+- 序列化：JSON、Hessian
+- 压缩：None、Gzip
+- 重试策略：可插拔扩展
 
 ---
 
-## 2. 核心流程（端到端）
+## 2. 端到端调用流程
 
-1. Provider 启动，注册本地服务实现到 `ProviderRegistry`。
-2. Provider 启动 Netty Server，并将服务元数据注册到 Zookeeper。
-3. Consumer 创建接口代理，发起方法调用时构建 `Request`。
-4. Consumer 从注册中心查询服务实例列表，执行负载均衡选择目标 Provider。
-5. 通过 Netty Channel 异步发送请求，同时在 `InFlightRequestManager` 登记 `requestId -> Future`。
-6. Provider 收到请求后完成限流校验、服务定位、反射调用，返回 `Response`。
-7. Consumer 收到响应后按 `requestId` 完成对应 Future，返回业务结果。
-8. 若失败则进入重试；重试仍失败则降级；严重异常时熔断保护。
+1. Provider 启动，向本地 `ProviderRegistry` 注册“接口 -> 实例”映射。  
+2. Provider 启动 Netty Server，并将服务元数据注册到注册中心。  
+3. Consumer 创建接口代理，业务调用被拦截并组装为 `Request`。  
+4. Consumer 从注册中心拉取实例列表，经过负载均衡选出目标 Provider。  
+5. Consumer 发送异步请求，并在 in-flight 表中记录 `requestId -> Future`。  
+6. Provider 收到请求后执行限流检查、服务定位、反射调用并返回 `Response`。  
+7. Consumer 按 `requestId` 匹配响应并完成 Future，返回结果。  
+8. 调用失败时按配置进入重试；重试仍失败则触发降级；节点异常时受熔断保护。  
 
 ---
 
-## 3. 目录结构（关键模块）
+## 3. 项目结构（关键目录）
 
 ```text
 src/main/java/tech/insight/kilsme/rpc
-├─ api/              # 示例接口与数据模型
-├─ codec/            # 协议编解码
-├─ message/          # Request/Response/心跳消息
-├─ provider/         # 服务端启动、服务注册表、请求处理
-├─ consumser/        # 客户端代理、连接管理、在途请求管理（目录名为 consumser）
-├─ register/         # 注册中心抽象与实现（ZK/Redis占位）
+├─ api/              # 示例服务接口与模型（Add/User）
+├─ message/          # 协议消息体（Request/Response/Heartbeat）
+├─ codec/            # 编解码器（KilsmeEncoder/KilsmeDecoder）
+├─ provider/         # Provider 启动、服务注册表、请求处理
+├─ consumser/        # Consumer 代理、连接管理、在途请求管理（目录名拼写即为 consumser）
+├─ register/         # 注册中心抽象与实现选择器
 ├─ loadbalance/      # 负载均衡策略
+├─ limit/            # 限流策略
 ├─ retry/            # 重试策略
 ├─ breaker/          # 熔断器
 ├─ fallback/         # 降级策略
-├─ limit/            # 限流策略
-├─ serialize/        # 序列化扩展
-├─ compress/         # 压缩扩展
-└─ handler/          # 通用 Netty Handler（心跳、流量记录等）
+├─ serialize/        # 序列化扩展点及实现
+├─ compress/         # 压缩扩展点及实现
+└─ handler/          # 心跳与流量统计等通用 Handler
 ```
 
 ---
 
 ## 4. 环境要求
 
-- JDK 17（项目运行日志显示使用 JDK17）
+- JDK 17（建议）
 - Maven 3.8+
-- Zookeeper（本地默认示例地址 `127.0.0.1:2181`）
+- Zookeeper（默认示例：`127.0.0.1:2181`）
 
-> `pom.xml` 中编译参数存在 Java 版本配置差异（properties 里是 8，compiler-plugin 里是 16），建议统一为你本机实际使用版本（如 17）。
+> 当前 `pom.xml` 里 Java 版本配置存在差异（properties=8、compiler-plugin=16），实际运行时请以本机可用 JDK 为准。
 
 ---
 
-## 5. 快速开始
+## 5. 快速启动
 
 ### 5.1 启动 Zookeeper
+确保本地可访问：
 
-请先确保本地 Zookeeper 已启动并可连接 `127.0.0.1:2181`。
+```text
+127.0.0.1:2181
+```
 
-### 5.2 构建项目
+### 5.2 编译 / 测试
 
 ```bash
-mvn clean package -DskipTests
+mvn test
 ```
 
 ### 5.3 启动 Provider
 
-运行主类：`tech.insight.kilsme.rpc.provider.ProviderApp`
+运行主类：
+
+```text
+tech.insight.kilsme.rpc.provider.ProviderApp
+```
+
+默认行为：
+- 监听 `127.0.0.1:8889`
+- 注册 `Add` 服务到 Zookeeper
 
 ### 5.4 启动 Consumer
 
-运行主类：`tech.insight.kilsme.rpc.consumser.ConsumerApp`
+运行主类：
 
-启动后可在日志中看到：
-- Provider 端服务注册日志
-- Consumer 端请求发送与响应回包日志
+```text
+tech.insight.kilsme.rpc.consumser.ConsumerApp
+```
 
----
-
-## 6. 配置建议
-
-- **注册中心地址**：确保 Consumer 与 Provider 使用同一套注册中心配置。
-- **请求超时**：建议根据业务耗时调大 `requestTimeoutMs` / `methodTimeOutMs`。
-- **限流阈值**：根据压测结果调整全局限流与单连接限流参数。
-- **日志级别**：排错阶段可开 `DEBUG`，日常建议 `INFO`，避免日志噪音过大。
+默认会演示：
+- 普通接口调用（`Add#add`）
+- 泛化调用（`$invoke`）
+- 对象参数透传与转换（`User` 合并）
 
 ---
 
-## 7. 常见问题（FAQ）
+## 6. 核心配置项（默认值）
 
-### Q1：Consumer 报错“没有找到服务”
-通常是 Provider 未成功注册到 Zookeeper，或两端配置的 `serviceName`/注册中心路径不一致。
+### ConsumerProperties
 
-### Q2：为什么会出现“未找到对应请求 requestId”
-一般是请求已超时并从 In-Flight 表移除，响应才迟到到达；或请求发送失败后 Future 已异常完成。
+| 配置项 | 默认值 | 说明 |
+|---|---:|---|
+| workThreadNum | 4 | Consumer Netty 工作线程数 |
+| connectTimeoutMs | 50000 | 建连超时（ms） |
+| requestTimeoutMs | 50000 | 单次请求超时（ms） |
+| methodTimeOutMs | 100000 | 方法总超时（含重试，ms） |
+| loadBalancePolicy | robin | 负载均衡策略（robin/random） |
+| retryPolicy | forking | 重试策略（retrySame/failover/forking） |
+| serialize | json | 序列化算法 |
+| compress | none | 压缩算法 |
+| rpcPreSecond | 50 | Consumer 全局在途请求限流 |
+| rpcPreChannel | 50 | 单连接限流 |
+| slowRequestBreakRatio | 0.5 | 慢调用熔断比例阈值 |
+| slowRequestMs | 1000 | 慢调用判定阈值（ms） |
 
-### Q3：为什么并发限流值看起来没生效
-可能请求没有形成足够并发重叠（服务执行太快），建议增加 Provider 处理耗时或提高压测并发持续度再观察。
+### ProviderProperties
+
+| 配置项 | 默认值 | 说明 |
+|---|---:|---|
+| host | - | Provider 对外地址 |
+| port | - | Provider 监听端口 |
+| globalMaxRequest | 50 | Provider 全局并发上限 |
+| preConsumerMaxRequest | 50 | 单连接速率上限 |
+| workThreadNum | 4 | Provider worker 线程数 |
+| serialize | json | 序列化算法 |
+| compress | none | 压缩算法 |
+
+### RegistryConfig
+
+| 配置项 | 默认值 | 说明 |
+|---|---|---|
+| registerType | zookeeper | 注册中心类型（当前已实现 zookeeper） |
+| connectString | - | 注册中心地址，例如 `127.0.0.1:2181` |
 
 ---
 
-## 8. 后续可演进方向
+## 7. 协议说明（简版）
 
-- 增加统一配置中心与热更新
-- 增加请求追踪（traceId）和链路监控指标导出
-- 增加鉴权、签名与传输加密
-- 增加灰度发布、权重路由与多机房容灾
-- 增加更完整的自动化测试与压测基线
+网络帧结构：
+
+```text
+| length(4) | magic(N) | type(1) | version(2) | ser+comp(1) | body(M) |
+```
+
+- `length`：后续载荷长度（不含 length 自身）
+- `magic`：协议魔数（`Message.MAGIC`）
+- `type`：消息类型（request/response/heartbeat）
+- `version`：协议版本
+- `ser+comp`：高 4 位序列化编码，低 4 位压缩编码
+- `body`：序列化后的消息体（按需压缩）
 
 ---
 
-## 9. License
+## 8. SPI 扩展机制
 
-本项目遵循仓库内 `LICENSE` 文件约定。
+项目使用 Java `ServiceLoader` 做插件发现。
 
+### 内置扩展
+- 序列化：
+  - `tech.insight.kilsme.rpc.serialize.JsonSerializer`
+  - `tech.insight.kilsme.rpc.serialize.HessianSerializer`
+- 压缩：
+  - `tech.insight.kilsme.rpc.compress.NoneCompression`
+  - `tech.insight.kilsme.rpc.compress.GzipCompression`
+- 重试：
+  - `tech.insight.kilsme.rpc.retry.RetrySame`
+  - `tech.insight.kilsme.rpc.retry.FailoverRetryPolicy`
+  - `tech.insight.kilsme.rpc.retry.ForkingRetryPolicy`
+
+---
+
+## 9. 常见问题（FAQ）
+
+### 1）Consumer 报“没有找到服务”
+- Provider 未启动或未成功注册到 Zookeeper
+- Consumer / Provider 注册中心地址不一致
+- 服务名（接口全限定名）不一致
+
+### 2）出现 requestId 不匹配或超时
+- 请求已超时并从 in-flight 表移除，响应迟到
+- 网络抖动导致发送失败或响应延迟
+- `requestTimeoutMs` 过小
+
+### 3）看起来限流没触发
+- 请求并发不够高，未触发阈值
+- 服务执行太快，难以形成并发堆积
+- 建议提高压测并发、增加调用持续时长观察
+
+---
+
+## 10. 说明与建议
+
+- 目录名 `consumser` 为当前项目既有命名，文档保持与代码一致。
+- 该项目适合用于学习 RPC 基础架构、治理策略与 SPI 扩展设计。
+- 若用于生产，请补充鉴权、观测、配置中心、单元/集成测试与安全加固。
+
+---
+
+## 11. License
+
+详见仓库根目录 `LICENSE`。
